@@ -1,0 +1,13 @@
+#N canvas 424 90 588 527 10;
+#X msg 149 132 reload;
+#X obj 148 278 bhack.chord;
+#X msg 177 183 notes C4 Bb4 Ab4 E5;
+#X text 210 71 Plot chords.;
+#X msg 161 157 notes C5 A#4 E5;
+#X msg 188 207 notes C#4 G+5 D#+5 Eb4;
+#X msg 196 231 notes Cb4 G-5 D-5 Eb4;
+#X connect 0 0 1 0;
+#X connect 2 0 1 0;
+#X connect 4 0 1 0;
+#X connect 5 0 1 0;
+#X connect 6 0 1 0;
