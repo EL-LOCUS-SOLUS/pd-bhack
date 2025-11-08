@@ -1,11 +1,11 @@
-local _ = require("bhack")
+local bhack = require("bhack")
 local b_arithm = pd.Class:new():register("bhack.arithmser")
 
 -- ─────────────────────────────────────
 function b_arithm:initialize(name, args)
 	self.inlets = 1
 	self.outlets = 1
-	self.outlet_id = tostring(self._object):match("userdata: (0x[%x]+)")
+	self.outlet_id = bhack.random_outid()
 	return true
 end
 

@@ -1,11 +1,12 @@
-local _ = require("bhack")
+local bhack = require("bhack")
 local b_collect = pd.Class:new():register("bhack.collect")
 
 -- ─────────────────────────────────────
 function b_collect:initialize(name, args)
 	self.inlets = 2
 	self.outlets = 1
-	self.outlet_id = tostring(self._object):match("userdata: (0x[%x]+)")
+	self.outlet_id = bhack.random_outid()
+
 	self.collected_table = {}
 	return true
 end
