@@ -17,12 +17,14 @@
 #X obj 167 363 bhack.print;
 #X obj 3 22 declare -path src;
 #X msg 264 120 reload;
-#X obj 264 203 bhack.chord;
+#X obj 263 266 bhack.chord;
 #X msg 276 145 notes C4 A#4 E5;
 #X msg 292 171 notes C4 Bb4 Ab4 E5;
 #X msg 178 130 1 2 3 4 5;
 #X msg 188 153 1 2 3;
 #X obj 167 179 bhack.mklist;
+#X msg 303 195 notes C4 G+5 D#+5 Eb4;
+#X msg 311 219 notes C4 G-5 D-5 Eb4;
 #X connect 2 0 4 0;
 #X connect 3 0 4 0;
 #X connect 4 0 5 0;
@@ -41,3 +43,5 @@
 #X connect 19 0 21 0;
 #X connect 20 0 21 0;
 #X connect 21 0 9 0;
+#X connect 22 0 16 0;
+#X connect 23 0 16 0;

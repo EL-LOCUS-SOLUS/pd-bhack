@@ -9,7 +9,14 @@ function b_chord:initialize(_, _)
 	self.DIATONIC_STEPS = { C = 0, D = 1, E = 2, F = 3, G = 4, A = 5, B = 6 }
 	self.NOTES = { "C4" }
 	self.CLEF_NAME = "gClef"
-	self.ACCIDENTAL_GLYPHS = { ["#"] = "accidentalSharp", ["b"] = "accidentalFlat" }
+	self.ACCIDENTAL_GLYPHS = {
+		["#"] = "accidentalSharp",
+		["b"] = "accidentalFlat",
+		["+"] = "accidentalQuarterToneSharpStein",
+		["-"] = "accidentalNarrowReversedFlat",
+		["b-"] = "accidentalNarrowReversedFlatAndFlat",
+		["#+"] = "accidentalThreeQuarterTonesSharpStein",
+	}
 
 	if not bhack.Bravura_Glyphnames then
 		bhack.readGlyphNames()
@@ -37,20 +44,21 @@ function b_chord:parse_pitch(pitch)
 	if type(pitch) ~= "string" then
 		pitch = tostring(pitch)
 	end
-	local letter, accidental, octave = pitch:match("^([A-Ga-g])([#b]?)(-?%d+)$")
+
+	-- should accept accidentals (#, b, +, -, b-, #+)
+	local letter, accidental, octave = pitch:match("^([A-Ga-g])([#%+b%-]-)(%d+)$")
+
 	if not letter or not octave then
 		return nil
 	end
+
 	letter = letter:upper()
 	if not self.DIATONIC_STEPS[letter] then
 		return nil
 	end
-	if accidental == "" then
-		accidental = nil
-	end
+
 	return letter, accidental, tonumber(octave)
 end
-
 -- ─────────────────────────────────────
 function b_chord:pitch_steps(ctx, pitch)
 	if type(pitch) == "table" and pitch.steps then
@@ -369,7 +377,8 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 					accidental_offset_spaces = accidental_offset_spaces + ((sw_y + ne_y) * 0.5)
 				end
 				if ctx.accidentals.vertical_offsets then
-					accidental_offset_spaces = accidental_offset_spaces + (ctx.accidentals.vertical_offsets[note.accidental] or 0)
+					accidental_offset_spaces = accidental_offset_spaces
+						+ (ctx.accidentals.vertical_offsets[note.accidental] or 0)
 				end
 				local accidental_group = self:glyph_group(
 					ctx,
