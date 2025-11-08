@@ -1,0 +1,17 @@
+#N canvas 963 23 951 1016 10;
+#X declare -path pd-score;
+#X declare -lib pdlua -path pdlua;
+#X obj 29 8 declare -path pd-score;
+#X msg 84 165 reload;
+#X obj 29 29 declare -lib pdlua -path pdlua;
+#X msg 137 193 addnote 67;
+#X obj 36 224 l.score -width 100 -height 100;
+#X obj 84 138 t b b;
+#X obj 84 109 bng 18 250 50 0 empty empty empty 0 -9 0 10 #fcfcfc #000000 #000000;
+#X msg 131 165 width 100 100;
+#X connect 1 0 4 0;
+#X connect 3 0 4 0;
+#X connect 5 0 7 0;
+#X connect 5 1 1 0;
+#X connect 6 0 5 0;
+#X connect 7 0 4 0;
