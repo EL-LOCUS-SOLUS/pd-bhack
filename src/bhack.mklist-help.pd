@@ -1,0 +1,11 @@
+#N canvas 397 39 445 257 10;
+#X msg 74 96 1 2 3 4 5;
+#X msg 84 119 1 2 3;
+#X obj 63 145 bhack.mklist;
+#X msg 63 63 list [1 [2 2 3] [3 3 4 5] [1 [2 [3 2]]] 4];
+#X text 59 23 Generate an llll and output a pointer to it.;
+#X obj 63 190 print;
+#X connect 0 0 2 0;
+#X connect 1 0 2 0;
+#X connect 2 0 5 0;
+#X connect 3 0 2 0;
