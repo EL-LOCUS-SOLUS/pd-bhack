@@ -1,6 +1,6 @@
 -- package.path = pd._loadpath .. "/?.lua;" .. package.path
 
-local b_chord = pd.Class:new():register("bhack.chord")
+local b_chord = pd.Class:new():register("bhack.chords")
 local bhack = require("bhack")
 
 -- ─────────────────────────────────────
@@ -10,6 +10,8 @@ function b_chord:initialize(_, args)
 	self.outlet_id = tostring(self._object):match("userdata: (0x[%x]+)")
 	self.DIATONIC_STEPS = { C = 0, D = 1, E = 2, F = 3, G = 4, A = 5, B = 6 }
 	self.NOTES = { "C4" }
+	self.individual_chord = true
+	self.CHORDS = { }
 
 	self.CLEF_GLYPHS = {}
 	for key, cfg in pairs(bhack.CLEF_CONFIGS) do
@@ -34,7 +36,7 @@ function b_chord:initialize(_, args)
 	end
 
 	local default_width = 200
-	local default_height = 100
+	local default_height = 80
 	if args ~= nil and #args > 0 then
 		local maybe_width = tonumber(args[1])
 		local maybe_height = tonumber(args[2])
@@ -61,6 +63,7 @@ end
 --╰─────────────────────────────────────╯
 function b_chord:in_1_list(args)
 	self.NOTES = args
+	self.individual_chord = true
 	self:repaint()
 end
 
@@ -93,6 +96,41 @@ function b_chord:in_1_clef(args)
 
 	self.current_clef_key = key
 	self.CLEF_NAME = clef
+	self:repaint()
+end
+
+-- ─────────────────────────────────────
+function b_chord:in_1_addchord(args)
+	self.individual_chord = false
+	self.CHORDS[#self.CHORDS + 1] = args
+	self:repaint()
+end
+
+-- Allow explicitly toggling between single-note list mode and chords mode.
+function b_chord:in_1_usechords(args)
+	local raw = args and args[1]
+	if raw == nil then
+		return
+	end
+	local v = raw
+	if type(v) ~= "string" then
+		if type(v) == "number" then
+			v = tostring(v)
+		elseif type(v) == "boolean" then
+			v = v and "true" or "false"
+		else
+			v = tostring(v)
+		end
+	end
+	v = v:lower()
+	if v == "true" or v == "1" or v == "yes" or v == "on" then
+		self.individual_chord = false
+	elseif v == "false" or v == "0" or v == "no" or v == "off" then
+		self.individual_chord = true
+	else
+		-- unknown value: ignore
+		return
+	end
 	self:repaint()
 end
 
@@ -310,17 +348,38 @@ function b_chord:build_paint_context()
 	end
 
 	local parsed_notes = {}
-	for _, note in ipairs(self.NOTES) do
-		local letter, accidental, octave = self:parse_pitch(note)
-		if letter and octave then
-			local steps_value = bhack.diatonic_value(self.DIATONIC_STEPS, letter, octave) - bottom_reference_value
-			table.insert(parsed_notes, {
-				raw = tostring(note),
-				letter = letter,
-				accidental = accidental,
-				octave = octave,
-				steps = steps_value,
-			})
+	local parsed_chords = {}
+	if self.individual_chord then
+		for _, note in ipairs(self.NOTES) do
+			local letter, accidental, octave = self:parse_pitch(note)
+			if letter and octave then
+				local steps_value = bhack.diatonic_value(self.DIATONIC_STEPS, letter, octave) - bottom_reference_value
+				table.insert(parsed_notes, {
+					raw = tostring(note),
+					letter = letter,
+					accidental = accidental,
+					octave = octave,
+					steps = steps_value,
+				})
+			end
+		end
+	else
+		for _, chord in ipairs(self.CHORDS) do
+			local chord_parsed = {}
+			for _, note in ipairs(chord) do
+				local letter, accidental, octave = self:parse_pitch(note)
+				if letter and octave then
+					local steps_value = bhack.diatonic_value(self.DIATONIC_STEPS, letter, octave) - bottom_reference_value
+					table.insert(chord_parsed, {
+						raw = tostring(note),
+						letter = letter,
+						accidental = accidental,
+						octave = octave,
+						steps = steps_value,
+					})
+				end
+			end
+			table.insert(parsed_chords, chord_parsed)
 		end
 	end
 
@@ -364,7 +423,8 @@ function b_chord:build_paint_context()
 			spacing = staff_spacing * 2.5,
 			accidental_gap = staff_spacing * 0.2,
 		},
-		notes = parsed_notes,
+	notes = parsed_notes,
+	chords = parsed_chords,
 		accidentals = {
 			map = self.ACCIDENTAL_GLYPHS,
 			default_width = staff_spacing * 0.9,
@@ -459,88 +519,333 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 	local ledger_chunks = {}
 	local current_x = note_start_x
 
-	for _, note in ipairs(ctx.notes) do
-		local steps = self:pitch_steps(ctx, note)
-		if steps then
-			local note_y = self:staff_y_for_steps(ctx, steps)
-			local ledger_steps = self:ledger_positions(ctx, steps)
-			local lead_gap = 0
-			local accidental_info = nil
-			local accidental_clearance = nil
-			if note.accidental and ctx.accidentals.map[note.accidental] then
-				local accidental_name = ctx.accidentals.map[note.accidental]
-				local accidental_offset_spaces = 0
-				local accidental_bbox = ctx.glyph.bboxes[accidental_name]
-				if accidental_bbox and accidental_bbox.bBoxNE and accidental_bbox.bBoxSW then
-					local sw_y = accidental_bbox.bBoxSW[2] or 0
-					local ne_y = accidental_bbox.bBoxNE[2] or 0
-					accidental_offset_spaces = accidental_offset_spaces + ((sw_y + ne_y) * 0.5)
-				end
-				if ctx.accidentals.vertical_offsets then
-					accidental_offset_spaces = accidental_offset_spaces
-						+ (ctx.accidentals.vertical_offsets[note.accidental] or 0)
-				end
-				local accidental_group, accidental_metrics = self:glyph_group(
-					ctx,
-					accidental_name,
-					current_x,
-					note_y,
-					"right",
-					"center",
-					"#000000",
-					{ y_offset_spaces = accidental_offset_spaces }
-				)
-				if accidental_group then
-					table.insert(note_chunks, "  " .. accidental_group)
-					accidental_info = {
-						anchor_x = current_x,
-						metrics = accidental_metrics,
-					}
-					accidental_clearance = math.max(ctx.note.accidental_gap * 0.5, staff.spacing * 0.1)
-					lead_gap = note_cfg.accidental_gap + (note_cfg.left_extent or 0)
-				end
-			end
-
-			if accidental_info and accidental_clearance and #ledger_steps > 0 then
-				local head_half_width = note_cfg.left_extent or (staff.spacing * 0.5)
-				local extra_each_side = (staff.spacing * 0.8) * 0.5
-				local required_note_x = accidental_info.anchor_x + accidental_clearance
-				required_note_x = required_note_x + ledger_cfg.extension + extra_each_side + head_half_width
-				local required_lead_gap = required_note_x - current_x
-				if required_lead_gap > lead_gap then
-					lead_gap = required_lead_gap
-				end
-			end
-
-			local note_x = current_x + lead_gap
-			local note_group, note_metrics =
-				self:glyph_group(ctx, note_cfg.glyph, note_x, note_y, "center", "center", "#000000")
-			if note_group then
-				table.insert(note_chunks, "  " .. note_group)
-				if #ledger_steps > 0 then
-					local head_width = (note_metrics and note_metrics.width) or (staff.spacing * 1.0)
-					local extra_each_side = (staff.spacing * 0.8) * 0.5
-					local note_left = note_x - (head_width * 0.5)
-					local note_right = note_x + (head_width * 0.5)
-					local ledger_left = note_left - ledger_cfg.extension - extra_each_side
-					local ledger_right = note_right + ledger_cfg.extension + extra_each_side
-					local ledger_length = ledger_right - ledger_left
-					for _, ledger_step in ipairs(ledger_steps) do
-						local ledger_y = self:staff_y_for_steps(ctx, ledger_step)
-						table.insert(
-							ledger_chunks,
-							string.format(
-								'  <rect x="%.3f" y="%.3f" width="%.3f" height="%.3f" fill="#000000"/>',
-								ledger_left,
-								ledger_y - (ledger_cfg.thickness * 0.5),
-								ledger_length,
-								ledger_cfg.thickness
-							)
+	-- If context contains chords, render each chord at the same x, then advance horizontally.
+	if ctx.chords and #ctx.chords > 0 then
+		local chord_count = #ctx.chords
+		-- spacing scale: few chords -> larger spacing, many chords -> smaller spacing
+		local spacing_scale = 1.0
+		if chord_count > 0 then
+			spacing_scale = math.max(0.5, math.min(2.0, 8 / chord_count))
+		end
+		for _, chord in ipairs(ctx.chords) do
+			-- first render accidentals for the whole chord and compute required lead gap
+			local chord_accidentals = {}
+			local chord_has_ledger = {}
+			for _, note in ipairs(chord) do
+				local steps = note.steps
+				if steps then
+					local note_y = self:staff_y_for_steps(ctx, steps)
+					local ledger_steps = self:ledger_positions(ctx, steps)
+					if #ledger_steps > 0 then
+						chord_has_ledger[#chord_has_ledger + 1] = true
+					end
+					if note.accidental and ctx.accidentals.map[note.accidental] then
+						local accidental_name = ctx.accidentals.map[note.accidental]
+						local accidental_offset_spaces = 0
+						local accidental_bbox = ctx.glyph.bboxes[accidental_name]
+						if accidental_bbox and accidental_bbox.bBoxNE and accidental_bbox.bBoxSW then
+							local sw_y = accidental_bbox.bBoxSW[2] or 0
+							local ne_y = accidental_bbox.bBoxNE[2] or 0
+							accidental_offset_spaces = accidental_offset_spaces + ((sw_y + ne_y) * 0.5)
+						end
+						if ctx.accidentals.vertical_offsets then
+							accidental_offset_spaces = accidental_offset_spaces + (ctx.accidentals.vertical_offsets[note.accidental] or 0)
+						end
+						-- collect accidental metric info; actual placement will be computed after lead_gap
+						local _, accidental_metrics = self:glyph_group(
+							ctx,
+							accidental_name,
+							current_x,
+							note_y,
+							"right",
+							"center",
+							"#000000",
+							{ y_offset_spaces = accidental_offset_spaces }
 						)
+						if accidental_metrics then
+							chord_accidentals[#chord_accidentals + 1] = {
+								name = accidental_name,
+								metrics = accidental_metrics,
+								note_y = note_y,
+								has_ledger = (#ledger_steps > 0),
+							}
+						end
 					end
 				end
 			end
-			current_x = note_x + note_cfg.spacing
+
+			-- compute the lead gap needed to keep ledger symmetric and clear accidentals
+			local lead_gap = 0
+			if #chord_accidentals > 0 then
+				local accidental_clearance = math.max(ctx.note.accidental_gap * 0.5, staff.spacing * 0.1)
+				local head_half_width = note_cfg.left_extent or (staff.spacing * 0.5)
+				local extra_each_side = (staff.spacing * 0.8) * 0.5
+				for _, a in ipairs(chord_accidentals) do
+					local required_note_x = current_x + accidental_clearance
+					if a.has_ledger then
+						required_note_x = required_note_x + ledger_cfg.extension + extra_each_side + head_half_width
+					else
+						required_note_x = required_note_x + head_half_width
+					end
+					local required_lead_gap = required_note_x - current_x
+					if required_lead_gap > lead_gap then
+						lead_gap = required_lead_gap
+					end
+				end
+				lead_gap = math.max(lead_gap, note_cfg.accidental_gap + (note_cfg.left_extent or 0))
+			end
+
+			local note_x = current_x + lead_gap
+
+			-- render chord accidentals stacked to the left so they don't overlap
+			if #chord_accidentals > 0 then
+				-- place accidentals into columns allowing interlock using glyph cutOuts
+				local units_per_space = ctx.glyph.units_per_space
+				local glyph_scale = ctx.glyph.scale
+				local columns = {}
+				-- columns are tables: { anchor_x = number, placed = { {min_x,max_x,min_y,max_y,metrics,bbox,anchor_y} }, width = number }
+				for _, a in ipairs(chord_accidentals) do
+					local placed = false
+					local bbox = ctx.glyph.bboxes[a.name]
+					local m = a.metrics
+					local anchor_y = a.note_y
+					-- compute metrics-derived local extents (relative to anchor)
+					local rel_min_x = m.min_x
+					local rel_max_x = m.max_x
+					local rel_min_y = (m.sw_y_units + m.translate_y_units) * glyph_scale
+					local rel_max_y = (m.ne_y_units + m.translate_y_units) * glyph_scale
+					for _, col in ipairs(columns) do
+						local col_anchor = col.anchor_x
+						local abs_min_x = col_anchor + rel_min_x
+						local abs_max_x = col_anchor + rel_max_x
+						local abs_min_y = anchor_y + rel_min_y
+						local abs_max_y = anchor_y + rel_max_y
+						-- check against each placed glyph in column for forbidden overlap
+						local ok = true
+						for _, p in ipairs(col.placed) do
+							local ox_min = math.max(abs_min_x, p.min_x)
+							local ox_max = math.min(abs_max_x, p.max_x)
+							local oy_min = math.max(abs_min_y, p.min_y)
+							local oy_max = math.min(abs_max_y, p.max_y)
+							if ox_max > ox_min and oy_max > oy_min then
+								-- overlapping rectangle exists; allow only if overlap lies within cutOuts of both glyphs
+								local function overlap_allowed(a_info, a_anchor_x, b_info, b_anchor_x, ox_min, ox_max, oy_min, oy_max)
+									-- need cutOuts on both
+									local abbox = ctx.glyph.bboxes[a_info.name]
+									local bbox_b = ctx.glyph.bboxes[b_info.name]
+									if not abbox or not bbox_b then
+										return false
+									end
+									local function rect_in_cutouts(info, anchor_x, ox_min, ox_max, oy_min, oy_max)
+										local bb = ctx.glyph.bboxes[info.name]
+										local units = units_per_space
+										local gscale = glyph_scale
+										-- compute overlap rectangle in glyph-local spaces
+										local translate_x_units = 0
+										-- compute translate_x_units same way glyph_group does for right alignment
+										local ne_x_units = (bb.bBoxNE[1] or 0) * units
+										translate_x_units = -ne_x_units
+										local ox_min_units = ((ox_min - anchor_x) / gscale - translate_x_units) / units
+										local ox_max_units = ((ox_max - anchor_x) / gscale - translate_x_units) / units
+										local oy_min_units = ((oy_min - info.note_y) / gscale - info.metrics.translate_y_units) / units
+										local oy_max_units = ((oy_max - info.note_y) / gscale - info.metrics.translate_y_units) / units
+										-- check against cutOut rectangles if present: each cutOut specifies inner corner in spaces
+										local function inside_cutouts(bb, ox1, ox2, oy1, oy2)
+											-- check four cutOuts; if none present, return false
+											local has = bb.cutOutNE or bb.cutOutSE or bb.cutOutSW or bb.cutOutNW
+											if not has then return false end
+											-- cutOutNE: rectangle from (x,y) to bbox.max
+											if bb.cutOutNE then
+												local cx, cy = bb.cutOutNE[1] or 0, bb.cutOutNE[2] or 0
+												if ox1 >= cx and oy1 >= cy then
+													-- overlap rect fully inside this cutout
+													return true
+												end
+											end
+											if bb.cutOutSE then
+												local cx, cy = bb.cutOutSE[1] or 0, bb.cutOutSE[2] or 0
+												if ox1 >= cx and oy2 <= cy then return true end
+											end
+											if bb.cutOutSW then
+												local cx, cy = bb.cutOutSW[1] or 0, bb.cutOutSW[2] or 0
+												if ox2 <= cx and oy2 <= cy then return true end
+											end
+											if bb.cutOutNW then
+												local cx, cy = bb.cutOutNW[1] or 0, bb.cutOutNW[2] or 0
+												if ox2 <= cx and oy1 >= cy then return true end
+											end
+											return false
+										end
+										return inside_cutouts(bb, ox_min_units, ox_max_units, oy_min_units, oy_max_units)
+									end
+
+									local a_ok = rect_in_cutouts(a_info, a_anchor_x, ox_min, ox_max, oy_min, oy_max)
+									local b_ok = rect_in_cutouts(b_info, b_anchor_x, ox_min, ox_max, oy_min, oy_max)
+									return a_ok and b_ok
+								end
+								-- both glyphs must allow the overlap
+								if not overlap_allowed(a, col_anchor, p.info, p.anchor_x, ox_min, ox_max, oy_min, oy_max) then
+									ok = false
+									break
+								end
+							end
+						end
+						if ok then
+							-- place here
+							local placed_min_x = abs_min_x
+							local placed_max_x = abs_max_x
+							local placed_min_y = abs_min_y
+							local placed_max_y = abs_max_y
+							table.insert(col.placed, { min_x = placed_min_x, max_x = placed_max_x, min_y = placed_min_y, max_y = placed_max_y, info = a, anchor_x = col.anchor_x })
+							col.width = math.max(col.width or 0, (rel_max_x - rel_min_x))
+							placed = true
+							break
+						end
+					end
+					if not placed then
+						-- create new column to the left of last
+						local last = columns[#columns]
+						local new_anchor = current_x
+						if last then
+							new_anchor = last.anchor_x - (last.width or (ctx.accidentals.default_width)) - (ctx.note.accidental_gap or 2)
+						end
+						local abs_min_x = new_anchor + rel_min_x
+						local abs_max_x = new_anchor + rel_max_x
+						local abs_min_y = anchor_y + rel_min_y
+						local abs_max_y = anchor_y + rel_max_y
+						table.insert(columns, { anchor_x = new_anchor, placed = { { min_x = abs_min_x, max_x = abs_max_x, min_y = abs_min_y, max_y = abs_max_y, info = a, anchor_x = new_anchor, metrics = m } }, width = (rel_max_x - rel_min_x) })
+						placed = true
+					end
+				end
+				-- after columns populated, emit glyph groups for each placed accidental in all columns (right-to-left order)
+				for _, col in ipairs(columns) do
+					for _, p in ipairs(col.placed) do
+						local g, _ = self:glyph_group(ctx, p.info.name, col.anchor_x, p.info.note_y, "right", "center", "#000000")
+						if g then table.insert(note_chunks, "  " .. g) end
+					end
+				end
+			end
+
+			-- render noteheads and their ledger lines
+			for _, note in ipairs(chord) do
+				local steps = note.steps
+				if steps then
+					local note_y = self:staff_y_for_steps(ctx, steps)
+					local note_group, note_metrics = self:glyph_group(ctx, note_cfg.glyph, note_x, note_y, "center", "center", "#000000")
+					if note_group then
+						table.insert(note_chunks, "  " .. note_group)
+						local ledger_steps = self:ledger_positions(ctx, steps)
+						if #ledger_steps > 0 then
+							local head_width = (note_metrics and note_metrics.width) or (staff.spacing * 1.0)
+							local extra_each_side = (staff.spacing * 0.8) * 0.5
+							local note_left = note_x - (head_width * 0.5)
+							local note_right = note_x + (head_width * 0.5)
+							local ledger_left = note_left - ledger_cfg.extension - extra_each_side
+							local ledger_right = note_right + ledger_cfg.extension + extra_each_side
+							local ledger_length = ledger_right - ledger_left
+							for _, ledger_step in ipairs(ledger_steps) do
+								local ledger_y = self:staff_y_for_steps(ctx, ledger_step)
+								table.insert(
+									ledger_chunks,
+									string.format(
+										'  <rect x="%.3f" y="%.3f" width="%.3f" height="%.3f" fill="#000000"/>',
+										ledger_left,
+										ledger_y - (ledger_cfg.thickness * 0.5),
+										ledger_length,
+										ledger_cfg.thickness
+									)
+								)
+							end
+						end
+					end
+				end
+			end
+
+			current_x = note_x + (note_cfg.spacing * spacing_scale)
+		end
+	else
+		-- single-notes mode (existing behavior)
+		for _, note in ipairs(ctx.notes) do
+			local steps = self:pitch_steps(ctx, note)
+			if steps then
+				local note_y = self:staff_y_for_steps(ctx, steps)
+				local ledger_steps = self:ledger_positions(ctx, steps)
+				local lead_gap = 0
+				local accidental_info = nil
+				local accidental_clearance = nil
+				if note.accidental and ctx.accidentals.map[note.accidental] then
+					local accidental_name = ctx.accidentals.map[note.accidental]
+					local accidental_offset_spaces = 0
+					local accidental_bbox = ctx.glyph.bboxes[accidental_name]
+					if accidental_bbox and accidental_bbox.bBoxNE and accidental_bbox.bBoxSW then
+						local sw_y = accidental_bbox.bBoxSW[2] or 0
+						local ne_y = accidental_bbox.bBoxNE[2] or 0
+						accidental_offset_spaces = accidental_offset_spaces + ((sw_y + ne_y) * 0.5)
+					end
+					if ctx.accidentals.vertical_offsets then
+						accidental_offset_spaces = accidental_offset_spaces + (ctx.accidentals.vertical_offsets[note.accidental] or 0)
+					end
+					local accidental_group, accidental_metrics = self:glyph_group(
+						ctx,
+						accidental_name,
+						current_x,
+						note_y,
+						"right",
+						"center",
+						"#000000",
+						{ y_offset_spaces = accidental_offset_spaces }
+					)
+					if accidental_group then
+						table.insert(note_chunks, "  " .. accidental_group)
+						accidental_info = {
+							anchor_x = current_x,
+							metrics = accidental_metrics,
+						}
+						accidental_clearance = math.max(ctx.note.accidental_gap * 0.5, staff.spacing * 0.1)
+						lead_gap = note_cfg.accidental_gap + (note_cfg.left_extent or 0)
+					end
+				end
+
+				if accidental_info and accidental_clearance and #ledger_steps > 0 then
+					local head_half_width = note_cfg.left_extent or (staff.spacing * 0.5)
+					local extra_each_side = (staff.spacing * 0.8) * 0.5
+					local required_note_x = accidental_info.anchor_x + accidental_clearance
+					required_note_x = required_note_x + ledger_cfg.extension + extra_each_side + head_half_width
+					local required_lead_gap = required_note_x - current_x
+					if required_lead_gap > lead_gap then
+						lead_gap = required_lead_gap
+					end
+				end
+
+				local note_x = current_x + lead_gap
+				local note_group, note_metrics = self:glyph_group(ctx, note_cfg.glyph, note_x, note_y, "center", "center", "#000000")
+				if note_group then
+					table.insert(note_chunks, "  " .. note_group)
+					if #ledger_steps > 0 then
+						local head_width = (note_metrics and note_metrics.width) or (staff.spacing * 1.0)
+						local extra_each_side = (staff.spacing * 0.8) * 0.5
+						local note_left = note_x - (head_width * 0.5)
+						local note_right = note_x + (head_width * 0.5)
+						local ledger_left = note_left - ledger_cfg.extension - extra_each_side
+						local ledger_right = note_right + ledger_cfg.extension + extra_each_side
+						local ledger_length = ledger_right - ledger_left
+						for _, ledger_step in ipairs(ledger_steps) do
+							local ledger_y = self:staff_y_for_steps(ctx, ledger_step)
+							table.insert(
+								ledger_chunks,
+								string.format(
+									'  <rect x="%.3f" y="%.3f" width="%.3f" height="%.3f" fill="#000000"/>',
+									ledger_left,
+									ledger_y - (ledger_cfg.thickness * 0.5),
+									ledger_length,
+									ledger_cfg.thickness
+								)
+							)
+						end
+					end
+				end
+				current_x = note_x + note_cfg.spacing
+			end
 		end
 	end
 
