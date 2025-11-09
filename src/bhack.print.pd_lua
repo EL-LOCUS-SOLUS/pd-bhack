@@ -1,4 +1,4 @@
-local _ = require("bhack")
+local bhack = require("bhack")
 local b_print = pd.Class:new():register("bhack.print")
 
 -- ─────────────────────────────────────
@@ -9,32 +9,19 @@ function b_print:initialize(name, args)
 end
 
 -- ─────────────────────────────────────
-function b_print:to_string(tbl)
-	if type(tbl) ~= "table" then
-		return tostring(tbl)
-	end
-
-	local parts = {}
-	for _, v in ipairs(tbl) do
-		if type(v) == "table" then
-			table.insert(parts, self:to_string(v))
-		else
-			table.insert(parts, tostring(v))
-		end
-	end
-
-	return "[" .. table.concat(parts, " ") .. "]"
-end
-
--- ─────────────────────────────────────
 function b_print:in_1_llll(atoms)
-	local t = _G.bhack_outlets[atoms[1]]
-	pd.post(b_print:to_string(t))
+	local id = atoms[1]
+	local llll = bhack.get_llll_fromid(self, id)
+	if llll == nil then
+		self:bhack_error("llll not found")
+		return
+	end
+
+	llll:print()
 end
 
 -- ─────────────────────────────────────
 function b_print:in_1_reload()
 	self:dofilex(self._scriptname)
 	self:initialize()
-	pd.post("ok")
 end

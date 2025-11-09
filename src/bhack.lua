@@ -2,19 +2,61 @@
 -- luacheck: globals bhack
 local slaxml = require("score/slaxml")
 local json = require("score/json")
+local llll = require("llll")
 
 local bhack = _G.bhack or {} -- reuse same instance if already loaded
 _G.bhack = bhack
+bhack.llll = llll
 
 --╭─────────────────────────────────────╮
 --│         llll output method          │
 --╰─────────────────────────────────────╯
 _G.bhack_outlets = _G.bhack_outlets or {}
+_G.bhack_global_var = _G.bhack_global_var or {}
 
 function pd.Class:llll_outlet(outlet, outletId, atoms)
 	local str = "<" .. outletId .. ">"
 	_G.bhack_outlets[str] = atoms
 	pd._outlet(self._object, outlet, "llll", { str })
+end
+
+-- ─────────────────────────────────────
+function pd.Class:bhack_error(str)
+	pd._error(self._object, "[" .. self._name .. "] " .. str)
+end
+
+-- ─────────────────────────────────────
+function bhack.add_global_var(id, value)
+	_G.bhack_global_var[id] = value
+end
+
+-- ─────────────────────────────────────
+function bhack.get_global_var(id)
+	return _G.bhack_global_var[id]
+end
+
+-- ─────────────────────────────────────
+function bhack.get_llll_fromid(self, id)
+	local original = _G.bhack_outlets[id]
+	if not original then
+		return nil
+	end
+
+	local function deep_copy(obj)
+		if type(obj) ~= "table" then
+			return obj
+		end
+		local copy = {}
+		for k, v in pairs(obj) do
+			copy[k] = deep_copy(v)
+		end
+		return setmetatable(copy, getmetatable(obj))
+	end
+
+	local copy = deep_copy(original)
+	copy.pdobj = self
+	copy.pdobj._llll_id = tostring({}):match("0x[%x]+")
+	return copy
 end
 
 -- ─────────────────────────────────────
