@@ -1,14 +1,23 @@
-local bhack = require("bhack")
+-- package.path = pd._loadpath .. "/?.lua;" .. package.path
+
 local b_chord = pd.Class:new():register("bhack.chord")
+local bhack = require("bhack")
 
 -- ─────────────────────────────────────
-function b_chord:initialize(_, _)
+function b_chord:initialize(_, args)
 	self.inlets = 1
 	self.outlets = 0
 	self.outlet_id = tostring(self._object):match("userdata: (0x[%x]+)")
 	self.DIATONIC_STEPS = { C = 0, D = 1, E = 2, F = 3, G = 4, A = 5, B = 6 }
 	self.NOTES = { "C4" }
-	self.CLEF_NAME = "gClef"
+
+	self.CLEF_GLYPHS = {}
+	for key, cfg in pairs(bhack.CLEF_CONFIGS) do
+		self.CLEF_GLYPHS[key] = cfg.glyph
+	end
+	self.current_clef_key = "g"
+	self.CLEF_NAME = self.CLEF_GLYPHS[self.current_clef_key]
+
 	self.ACCIDENTAL_GLYPHS = {
 		["#"] = "accidentalSharp",
 		["b"] = "accidentalFlat",
@@ -17,7 +26,6 @@ function b_chord:initialize(_, _)
 		["b-"] = "accidentalNarrowReversedFlatAndFlat",
 		["#+"] = "accidentalThreeQuarterTonesSharpStein",
 	}
-
 	if not bhack.Bravura_Glyphnames then
 		bhack.readGlyphNames()
 	end
@@ -25,21 +33,77 @@ function b_chord:initialize(_, _)
 		bhack.readFont()
 	end
 
-	self.width = 200
-	self.height = 100
+	local default_width = 200
+	local default_height = 100
+	if args ~= nil and #args > 0 then
+		local maybe_width = tonumber(args[1])
+		local maybe_height = tonumber(args[2])
+		self.width = (maybe_width and maybe_width > 0) and maybe_width or default_width
+		self.height = (maybe_height and maybe_height > 0) and maybe_height or default_height
+	else
+		self.width = default_width
+		self.height = default_height
+	end
 
-	self:set_size(200, 100)
+	self:set_size(self.width, self.height)
 
 	return true
 end
 
--- ─────────────────────────────────────
-function b_chord:in_1_notes(args)
+function b_chord:llll_outlet(outlet, outletId, atoms)
+	local str = "<" .. outletId .. ">"
+	_G.bhack_outlets[str] = atoms
+	pd._outlet(self._object, outlet, "llll", { str })
+end
+
+--╭─────────────────────────────────────╮
+--│           Object Methods            │
+--╰─────────────────────────────────────╯
+function b_chord:in_1_list(args)
 	self.NOTES = args
 	self:repaint()
 end
 
 -- ─────────────────────────────────────
+function b_chord:in_1_size(args)
+	if type(args) ~= "table" then
+		return
+	end
+	local maybe_width = tonumber(args[1])
+	local maybe_height = tonumber(args[2])
+	if maybe_width and maybe_width > 0 then
+		self.width = maybe_width
+	end
+	if maybe_height and maybe_height > 0 then
+		self.height = maybe_height
+	end
+	self:set_size(self.width, self.height)
+	self:repaint()
+end
+
+-- ─────────────────────────────────────
+function b_chord:in_1_clef(args)
+	local raw = args and args[1]
+	local key = raw and tostring(raw):lower() or ""
+	local clef = self.CLEF_GLYPHS[key]
+	if clef == nil then
+		self:error("Invalid clef: " .. tostring(raw))
+		return
+	end
+
+	self.current_clef_key = key
+	self.CLEF_NAME = clef
+	self:repaint()
+end
+
+-- ─────────────────────────────────────
+function b_chord:in_1_llll(atoms)
+	local t = _G.bhack_outlets[atoms[1]]
+end
+
+--╭─────────────────────────────────────╮
+--│           Draw Functions            │
+--╰─────────────────────────────────────╯
 function b_chord:parse_pitch(pitch)
 	if type(pitch) ~= "string" then
 		pitch = tostring(pitch)
@@ -55,6 +119,9 @@ function b_chord:parse_pitch(pitch)
 	letter = letter:upper()
 	if not self.DIATONIC_STEPS[letter] then
 		return nil
+	end
+	if accidental == "" then
+		accidental = nil
 	end
 
 	return letter, accidental, tonumber(octave)
@@ -180,6 +247,13 @@ function b_chord:build_paint_context()
 		return nil
 	end
 
+	local clef_config = bhack.CLEF_CONFIG_BY_GLYPH[self.CLEF_NAME]
+		or bhack.CLEF_CONFIGS[self.current_clef_key]
+		or bhack.CLEF_CONFIGS.g
+	if not clef_config then
+		return nil
+	end
+
 	local units_per_em = 2048
 
 	if bhack.Bravura_Font and bhack.Bravura_Font["units-per-em"] and bhack.Bravura_Font["units-per-em"][1] then
@@ -188,65 +262,64 @@ function b_chord:build_paint_context()
 
 	local width = self.width
 	local height = self.height
-	local outer_margin_x = math.max(width * 0.08, 12)
-	local outer_margin_y = math.max(height * 0.1, 12)
+	local outer_margin_x = 2
+	local outer_margin_y = math.max(height * 0.1, 12) + 10
 	local drawable_width = width - (outer_margin_x * 2)
 	local drawable_height = height - (outer_margin_y * 2)
 	if drawable_width <= 0 or drawable_height <= 0 then
 		return nil
 	end
 
-	local clef_span_spaces = bhack.glyphVerticalSpanSpaces(self.CLEF_NAME)
-	if clef_span_spaces <= 0 then
-		clef_span_spaces = 6.5
-	end
-
-	local clef_padding_spaces = 0.75
+	local current_clef_span = bhack.clef_span_spaces(self.CLEF_NAME, bhack.DEFAULT_CLEF_LAYOUT.fallback_span_spaces)
+	local clef_padding_spaces = bhack.DEFAULT_CLEF_LAYOUT.padding_spaces
 	local staff_span_spaces = 4
 
 	local space_px_from_staff = drawable_height / staff_span_spaces
-	local space_px_from_clef = drawable_height / (clef_span_spaces + clef_padding_spaces)
-	local staff_spacing = math.min(space_px_from_staff, space_px_from_clef)
+	local limit_from_max_span = drawable_height / (bhack.ensure_max_clef_span() + (clef_padding_spaces * 2))
+	local limit_from_current_span = drawable_height / (current_clef_span + (clef_padding_spaces * 2))
+	local staff_spacing = math.min(space_px_from_staff, limit_from_max_span, limit_from_current_span)
 	if staff_spacing <= 0 then
 		return nil
 	end
 
-	local staff_height = staff_spacing * staff_span_spaces
-	local extra_vertical = math.max(0, drawable_height - staff_height)
-	local staff_top = outer_margin_y + (extra_vertical * 0.5)
-	local staff_bottom = staff_top + staff_height
-	local staff_center = staff_top + (staff_height * 0.5)
+	local total_staff_area = staff_spacing * (staff_span_spaces + (clef_padding_spaces * 2))
+	local remaining_vertical = math.max(0, drawable_height - total_staff_area)
+	local staff_padding_px = clef_padding_spaces * staff_spacing
+	local staff_top = outer_margin_y + (remaining_vertical * 0.5) + staff_padding_px
+	local staff_bottom = staff_top + (staff_spacing * staff_span_spaces)
+	local staff_center = staff_top + ((staff_spacing * staff_span_spaces) * 0.5)
 	local staff_left = outer_margin_x
-	local staff_line_thickness = math.max(
-		1,
-		staff_spacing
-			* (
-				(
-					bhack.Bravura_Metadata.engravingDefaults
-					and bhack.Bravura_Metadata.engravingDefaults.staffLineThickness
-				) or 0.13
-			)
-	)
-	local ledger_extension = staff_spacing
-		* (
-			(bhack.Bravura_Metadata.engravingDefaults and bhack.Bravura_Metadata.engravingDefaults.legerLineExtension)
-			or 0.4
-		)
+
+	local engraving_defaults = bhack.Bravura_Metadata.engravingDefaults or {}
+	local staff_line_thickness = math.max(1, staff_spacing * (engraving_defaults.staffLineThickness or 0.13))
+	local ledger_extension = staff_spacing * (engraving_defaults.legerLineExtension or 0.4)
 
 	local units_per_space = units_per_em / 4
 	local glyph_scale = staff_spacing / units_per_space
+
+	local bottom_line = clef_config.bottom_line
+	local bottom_letter = bottom_line.letter:upper()
+	local bottom_reference_value = bhack.diatonic_value(self.DIATONIC_STEPS, bottom_letter, bottom_line.octave)
+	local anchor_steps = 0
+	if clef_config.anchor_pitch then
+		local anchor_letter = clef_config.anchor_pitch.letter:upper()
+		anchor_steps = bhack.diatonic_value(self.DIATONIC_STEPS, anchor_letter, clef_config.anchor_pitch.octave)
+			- bottom_reference_value
+	else
+		anchor_steps = 4
+	end
 
 	local parsed_notes = {}
 	for _, note in ipairs(self.NOTES) do
 		local letter, accidental, octave = self:parse_pitch(note)
 		if letter and octave then
-			local steps = (octave * 7) + self.DIATONIC_STEPS[letter] - ((4 * 7) + self.DIATONIC_STEPS.E)
+			local steps_value = bhack.diatonic_value(self.DIATONIC_STEPS, letter, octave) - bottom_reference_value
 			table.insert(parsed_notes, {
 				raw = tostring(note),
 				letter = letter,
 				accidental = accidental,
 				octave = octave,
-				steps = steps,
+				steps = steps_value,
 			})
 		end
 	end
@@ -269,6 +342,7 @@ function b_chord:build_paint_context()
 			width = drawable_width,
 			spacing = staff_spacing,
 			line_thickness = staff_line_thickness,
+			padding = staff_padding_px,
 		},
 		ledger = {
 			extension = ledger_extension,
@@ -278,9 +352,12 @@ function b_chord:build_paint_context()
 		},
 		clef = {
 			name = self.CLEF_NAME,
-			anchor_offset = 0.8,
-			spacing_after = 2.0,
-			default_width = staff_spacing * 2,
+			anchor_offset = bhack.DEFAULT_CLEF_LAYOUT.horizontal_offset_spaces,
+			spacing_after = bhack.DEFAULT_CLEF_LAYOUT.spacing_after,
+			padding_spaces = clef_padding_spaces,
+			span_spaces = current_clef_span,
+			vertical_offset_spaces = bhack.DEFAULT_CLEF_LAYOUT.vertical_offset_spaces,
+			anchor_steps = anchor_steps,
 		},
 		note = {
 			glyph = "noteheadBlack",
@@ -293,7 +370,7 @@ function b_chord:build_paint_context()
 			default_width = staff_spacing * 0.9,
 			vertical_offsets = {},
 		},
-		diatonic_reference = (4 * 7) + self.DIATONIC_STEPS.E,
+		diatonic_reference = bottom_reference_value,
 	}
 
 	local note_bbox = bhack.Bravura_Metadata.glyphBBoxes[context.note.glyph]
@@ -308,6 +385,20 @@ function b_chord:build_paint_context()
 		context.note.left_extent = staff_spacing * 0.6
 		context.note.right_extent = context.note.left_extent
 	end
+
+	local clef_bbox = bhack.Bravura_Metadata.glyphBBoxes[self.CLEF_NAME]
+	if clef_bbox and clef_bbox.bBoxNE and clef_bbox.bBoxSW then
+		local width_spaces = (clef_bbox.bBoxNE[1] or 0) - (clef_bbox.bBoxSW[1] or 0)
+		if width_spaces and width_spaces > 0 then
+			context.clef.width_spaces = width_spaces
+			context.clef.default_width = width_spaces * staff_spacing
+		end
+	end
+	if not context.clef.default_width then
+		context.clef.default_width = staff_spacing * 2
+	end
+	context.clef.max_span_spaces = bhack.ensure_max_clef_span()
+	context.clef.config = clef_config
 
 	return context
 end
@@ -340,7 +431,13 @@ function b_chord:draw_clef(ctx)
 	local staff = ctx.staff
 	local clef = ctx.clef
 	local clef_x = staff.left + (staff.spacing * clef.anchor_offset)
-	local clef_group, clef_metrics = self:glyph_group(ctx, clef.name, clef_x, staff.center, "left", "center", "#000000")
+	local clef_y = self:staff_y_for_steps(ctx, clef.anchor_steps or 0)
+	local options = {}
+	if clef.vertical_offset_spaces and clef.vertical_offset_spaces ~= 0 then
+		options.y_offset_spaces = clef.vertical_offset_spaces
+	end
+	local clef_group, clef_metrics =
+		self:glyph_group(ctx, clef.name, clef_x, clef_y, "left", "baseline", "#000000", options)
 	if not clef_group then
 		return nil, nil, clef_x
 	end
@@ -362,11 +459,14 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 	local ledger_chunks = {}
 	local current_x = note_start_x
 
-	for index, note in ipairs(ctx.notes) do
+	for _, note in ipairs(ctx.notes) do
 		local steps = self:pitch_steps(ctx, note)
 		if steps then
 			local note_y = self:staff_y_for_steps(ctx, steps)
+			local ledger_steps = self:ledger_positions(ctx, steps)
 			local lead_gap = 0
+			local accidental_info = nil
+			local accidental_clearance = nil
 			if note.accidental and ctx.accidentals.map[note.accidental] then
 				local accidental_name = ctx.accidentals.map[note.accidental]
 				local accidental_offset_spaces = 0
@@ -380,7 +480,7 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 					accidental_offset_spaces = accidental_offset_spaces
 						+ (ctx.accidentals.vertical_offsets[note.accidental] or 0)
 				end
-				local accidental_group = self:glyph_group(
+				local accidental_group, accidental_metrics = self:glyph_group(
 					ctx,
 					accidental_name,
 					current_x,
@@ -392,7 +492,23 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 				)
 				if accidental_group then
 					table.insert(note_chunks, "  " .. accidental_group)
+					accidental_info = {
+						anchor_x = current_x,
+						metrics = accidental_metrics,
+					}
+					accidental_clearance = math.max(ctx.note.accidental_gap * 0.5, staff.spacing * 0.1)
 					lead_gap = note_cfg.accidental_gap + (note_cfg.left_extent or 0)
+				end
+			end
+
+			if accidental_info and accidental_clearance and #ledger_steps > 0 then
+				local head_half_width = note_cfg.left_extent or (staff.spacing * 0.5)
+				local extra_each_side = (staff.spacing * 0.8) * 0.5
+				local required_note_x = accidental_info.anchor_x + accidental_clearance
+				required_note_x = required_note_x + ledger_cfg.extension + extra_each_side + head_half_width
+				local required_lead_gap = required_note_x - current_x
+				if required_lead_gap > lead_gap then
+					lead_gap = required_lead_gap
 				end
 			end
 
@@ -401,18 +517,21 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 				self:glyph_group(ctx, note_cfg.glyph, note_x, note_y, "center", "center", "#000000")
 			if note_group then
 				table.insert(note_chunks, "  " .. note_group)
-				local ledger_steps = self:ledger_positions(ctx, steps)
 				if #ledger_steps > 0 then
 					local head_width = (note_metrics and note_metrics.width) or (staff.spacing * 1.0)
-					local ledger_length = (head_width + (staff.spacing * 0.8)) + (ledger_cfg.extension * 2)
+					local extra_each_side = (staff.spacing * 0.8) * 0.5
+					local note_left = note_x - (head_width * 0.5)
+					local note_right = note_x + (head_width * 0.5)
+					local ledger_left = note_left - ledger_cfg.extension - extra_each_side
+					local ledger_right = note_right + ledger_cfg.extension + extra_each_side
+					local ledger_length = ledger_right - ledger_left
 					for _, ledger_step in ipairs(ledger_steps) do
 						local ledger_y = self:staff_y_for_steps(ctx, ledger_step)
-						local ledger_x = note_x - (ledger_length * 0.5)
 						table.insert(
 							ledger_chunks,
 							string.format(
 								'  <rect x="%.3f" y="%.3f" width="%.3f" height="%.3f" fill="#000000"/>',
-								ledger_x,
+								ledger_left,
 								ledger_y - (ledger_cfg.thickness * 0.5),
 								ledger_length,
 								ledger_cfg.thickness
@@ -436,18 +555,6 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 	end
 
 	return notes_svg, ledger_svg
-end
-
--- ─────────────────────────────────────
-function b_chord:in_1_size(atoms)
-	if type(atoms) ~= "table" then
-		return
-	end
-
-	local new_width = atoms[1] or self.width
-	local new_height = atoms[2] or self.height
-
-	self:update_canvas_size(new_width, new_height)
 end
 
 -- ─────────────────────────────────────

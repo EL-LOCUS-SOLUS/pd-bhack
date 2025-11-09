@@ -164,4 +164,75 @@ function bhack.getGlyph(name)
 	return bhack.Bravura_Glyphs and bhack.Bravura_Glyphs[codepoint]
 end
 
+-- ─────────────────────────────────────
+function bhack.ensure_max_clef_span()
+	if bhack.MAX_CLEF_SPAN_SPACES then
+		return bhack.MAX_CLEF_SPAN_SPACES
+	end
+	local max_span = 0
+	for _, cfg in pairs(bhack.CLEF_CONFIGS) do
+		local span = bhack.clef_span_spaces(cfg.glyph, bhack.DEFAULT_CLEF_LAYOUT.fallback_span_spaces)
+		if span and span > max_span then
+			max_span = span
+		end
+	end
+	bhack.MAX_CLEF_SPAN_SPACES = max_span > 0 and max_span or bhack.DEFAULT_CLEF_LAYOUT.fallback_span_spaces
+	return bhack.MAX_CLEF_SPAN_SPACES
+end
+
+-- ─────────────────────────────────────
+function bhack.diatonic_value(steps_table, letter, octave)
+	return (octave * 7) + steps_table[letter]
+end
+
+-- ─────────────────────────────────────
+function bhack.clef_span_spaces(glyph_name, fallback)
+	if not bhack.Bravura_Metadata or not bhack.Bravura_Metadata.glyphBBoxes then
+		return fallback
+	end
+	local bbox = bhack.Bravura_Metadata.glyphBBoxes[glyph_name]
+	if bbox and bbox.bBoxNE and bbox.bBoxSW then
+		local ne = bbox.bBoxNE[2] or 0
+		local sw = bbox.bBoxSW[2] or 0
+		return ne - sw
+	end
+	return fallback
+end
+
+-- ─────────────────────────────────────
+bhack.CLEF_CONFIGS = {
+	g = {
+		glyph = "gClef",
+		bottom_line = { letter = "E", octave = 4 },
+		anchor_pitch = { letter = "G", octave = 4 },
+	},
+	f = {
+		glyph = "fClef",
+		bottom_line = { letter = "G", octave = 2 },
+		anchor_pitch = { letter = "F", octave = 3 },
+	},
+	c = {
+		glyph = "cClef",
+		bottom_line = { letter = "F", octave = 3 },
+		anchor_pitch = { letter = "C", octave = 4 },
+	},
+}
+
+-- ─────────────────────────────────────
+bhack.DEFAULT_CLEF_LAYOUT = {
+	padding_spaces = 0.1,
+	horizontal_offset_spaces = 0.8,
+	spacing_after = 2.0,
+	vertical_offset_spaces = 0.0,
+	fallback_span_spaces = 6.5,
+}
+
+-- ─────────────────────────────────────
+bhack.CLEF_CONFIG_BY_GLYPH = {}
+
+for key, cfg in pairs(bhack.CLEF_CONFIGS) do
+	cfg.key = key
+	bhack.CLEF_CONFIG_BY_GLYPH[cfg.glyph] = cfg
+end
+
 return bhack
