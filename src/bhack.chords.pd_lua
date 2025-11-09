@@ -1,10 +1,57 @@
 local b_chord = pd.Class:new():register("bhack.chords")
 local bhack = require("bhack")
 
+local function assign_cluster_offsets(notes, threshold_steps, offset_px)
+	if not notes then
+		return
+	end
+
+	for i = 1, #notes do
+		notes[i].cluster_offset_px = 0
+	end
+
+	if #notes < 2 or offset_px <= 0 then
+		return
+	end
+
+	local sorted = {}
+	for i = 1, #notes do
+		sorted[i] = notes[i]
+	end
+
+	table.sort(sorted, function(a, b)
+		return a.steps < b.steps
+	end)
+
+	local function apply_cluster(cluster)
+		if #cluster <= 1 then
+			return
+		end
+		local direction = -1 -- lowest pitch goes left first
+		for _, note in ipairs(cluster) do
+			note.cluster_offset_px = direction * offset_px
+			direction = -direction
+		end
+	end
+
+	local cluster = { sorted[1] }
+	for i = 2, #sorted do
+		local note = sorted[i]
+		local prev = sorted[i - 1]
+		if math.abs(note.steps - prev.steps) <= threshold_steps then
+			cluster[#cluster + 1] = note
+		else
+			apply_cluster(cluster)
+			cluster = { note }
+		end
+	end
+	apply_cluster(cluster)
+end
+
 -- ─────────────────────────────────────
 function b_chord:initialize(_, args)
 	self.inlets = 1
-	self.outlets = 0
+	self.outlets = 1
 	self.outlet_id = tostring(self._object):match("userdata: (0x[%x]+)")
 	self.DIATONIC_STEPS = { C = 0, D = 1, E = 2, F = 3, G = 4, A = 5, B = 6 }
 	self.NOTES = { "C4" }
@@ -47,16 +94,36 @@ function b_chord:initialize(_, args)
 
 	self:set_size(self.width, self.height)
 
+	self.playclock = pd.Clock:new():register(self, "playing_clock")
+	self.playbar_position = 20
+
 	return true
+end
+
+-- ─────────────────────────────────────
+function b_chord:playing_clock()
+	self.playbar_position = self.playbar_position + 2
+	if self.playbar_position > self.width - 2 then
+		self.playbar_position = 20
+		self.playing = false
+	else
+		self.playclock:delay(30)
+		self:repaint(2)
+	end
 end
 
 --╭─────────────────────────────────────╮
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
-function b_chord:in_1_list(args)
-	self.NOTES = args
-	self.individual_chord = true
-	self:repaint()
+function b_chord:in_1_play(_)
+	self:error("Not implemented yet")
+	self.playbar_position = 20
+	self.playing = not self.playing
+	if self.playing then
+		self.playclock:delay(0)
+	else
+		self.playclock:unset()
+	end
 end
 
 -- ─────────────────────────────────────
@@ -77,6 +144,9 @@ function b_chord:in_1_size(args)
 end
 
 -- ─────────────────────────────────────
+function b_chord:in_1_export(args) end
+
+-- ─────────────────────────────────────
 function b_chord:in_1_clef(args)
 	local raw = args and args[1]
 	local key = raw and tostring(raw):lower() or ""
@@ -88,13 +158,6 @@ function b_chord:in_1_clef(args)
 
 	self.current_clef_key = key
 	self.CLEF_NAME = clef
-	self:repaint()
-end
-
--- ─────────────────────────────────────
-function b_chord:in_1_addchord(args)
-	self.individual_chord = false
-	self.CHORDS[#self.CHORDS + 1] = args
 	self:repaint()
 end
 
@@ -409,9 +472,32 @@ function b_chord:build_paint_context()
 			map = self.ACCIDENTAL_GLYPHS,
 			default_width = staff_spacing * 0.9,
 			vertical_offsets = {},
+			glyph_vertical_offsets = {},
 		},
 		diatonic_reference = bottom_reference_value,
 	}
+
+	local glyph_bboxes = bhack.Bravura_Metadata.glyphBBoxes or {}
+	local glyph_cutouts = bhack.Bravura_Metadata.glyphsWithAnchors or {}
+	for accidental_key, glyph_name in pairs(context.accidentals.map) do
+		local bbox = glyph_bboxes[glyph_name]
+		local cutouts = glyph_cutouts[glyph_name]
+		if bbox and bbox.bBoxNE and bbox.bBoxSW and cutouts then
+			local top = bbox.bBoxNE[2] or 0
+			local bottom = bbox.bBoxSW[2] or 0
+			local center = (top + bottom) * 0.5
+			local upper_y = (cutouts.cutOutNE and cutouts.cutOutNE[2]) or (cutouts.cutOutNW and cutouts.cutOutNW[2])
+			local lower_y = (cutouts.cutOutSE and cutouts.cutOutSE[2]) or (cutouts.cutOutSW and cutouts.cutOutSW[2])
+			if upper_y and lower_y then
+				local target = (upper_y + lower_y) * 0.5
+				local offset = center - target
+				if math.abs(offset) > 0.01 then
+					context.accidentals.vertical_offsets[accidental_key] = offset
+					context.accidentals.glyph_vertical_offsets[glyph_name] = offset
+				end
+			end
+		end
+	end
 
 	local note_bbox = bhack.Bravura_Metadata.glyphBBoxes[context.note.glyph]
 	if note_bbox and note_bbox.bBoxNE and note_bbox.bBoxSW then
@@ -424,6 +510,18 @@ function b_chord:build_paint_context()
 	else
 		context.note.left_extent = staff_spacing * 0.6
 		context.note.right_extent = context.note.left_extent
+	end
+
+	local notehead_width_px = (context.note.left_extent or 0) + (context.note.right_extent or 0)
+	local cluster_threshold_steps = 1 -- only stagger immediately adjacent steps
+	local cluster_offset_px = notehead_width_px * 0.5
+
+	if self.individual_chord then
+		assign_cluster_offsets(context.notes, cluster_threshold_steps, cluster_offset_px)
+	else
+		for _, chord_notes in ipairs(parsed_chords) do
+			assign_cluster_offsets(chord_notes, cluster_threshold_steps, cluster_offset_px)
+		end
 	end
 
 	local clef_bbox = bhack.Bravura_Metadata.glyphBBoxes[self.CLEF_NAME]
@@ -498,6 +596,7 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 	local note_chunks = {}
 	local ledger_chunks = {}
 	local current_x = note_start_x
+	local ledger_extra_each_side = (staff.spacing * 0.8) * 0.5
 
 	-- If context contains chords, render each chord at the same x, then advance horizontally.
 	if ctx.chords and #ctx.chords > 0 then
@@ -508,6 +607,22 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 			spacing_scale = math.max(0.5, math.min(2.0, 8 / chord_count))
 		end
 		for _, chord in ipairs(ctx.chords) do
+			local chord_min_left = 0
+			for _, note in ipairs(chord) do
+				local offset = note.cluster_offset_px or 0
+				local effective_left = offset
+				local steps = note.steps
+				if steps then
+					local ledger_steps = self:ledger_positions(ctx, steps)
+					if #ledger_steps > 0 then
+						effective_left = math.min(effective_left, offset - ledger_cfg.extension - ledger_extra_each_side)
+					end
+				end
+				if effective_left < chord_min_left then
+					chord_min_left = effective_left
+				end
+			end
+
 			-- first render accidentals for the whole chord and compute required lead gap
 			local chord_accidentals = {}
 			local chord_has_ledger = {}
@@ -521,13 +636,9 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 					end
 					if note.accidental and ctx.accidentals.map[note.accidental] then
 						local accidental_name = ctx.accidentals.map[note.accidental]
-						-- Avoid deriving a vertical offset from the accidental bbox midpoint.
-						-- That produced flats shifted one staff-position too low. Instead only
-						-- apply explicit vertical offsets if provided in ctx.accidentals.vertical_offsets.
 						local accidental_offset_spaces = 0
 						if ctx.accidentals.vertical_offsets then
-							accidental_offset_spaces = accidental_offset_spaces
-								+ (ctx.accidentals.vertical_offsets[note.accidental] or 0)
+							accidental_offset_spaces = ctx.accidentals.vertical_offsets[note.accidental] or 0
 						end
 						-- collect accidental metric info; actual placement will be computed after lead_gap
 						local _, accidental_metrics = self:glyph_group(
@@ -546,6 +657,7 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 								metrics = accidental_metrics,
 								note_y = note_y,
 								has_ledger = (#ledger_steps > 0),
+								offset_spaces = accidental_offset_spaces,
 							}
 						end
 					end
@@ -557,20 +669,15 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 			if #chord_accidentals > 0 then
 				local accidental_clearance = math.max(ctx.note.accidental_gap * 0.5, staff.spacing * 0.1)
 				local head_half_width = note_cfg.left_extent or (staff.spacing * 0.5)
-				local extra_each_side = (staff.spacing * 0.8) * 0.5
+				local extra_each_side = ledger_extra_each_side
 				for _, a in ipairs(chord_accidentals) do
-					local required_note_x = current_x + accidental_clearance
-					if a.has_ledger then
-						required_note_x = required_note_x + ledger_cfg.extension + extra_each_side + head_half_width
-					else
-						required_note_x = required_note_x + head_half_width
-					end
-					local required_lead_gap = required_note_x - current_x
+					local required_note_x = current_x + accidental_clearance + head_half_width
+					local required_lead_gap = required_note_x - current_x - chord_min_left
 					if required_lead_gap > lead_gap then
 						lead_gap = required_lead_gap
 					end
 				end
-				lead_gap = math.max(lead_gap, note_cfg.accidental_gap + (note_cfg.left_extent or 0))
+				lead_gap = math.max(lead_gap, note_cfg.accidental_gap + (note_cfg.left_extent or 0) - chord_min_left)
 			end
 
 			local note_x = current_x + lead_gap
@@ -756,9 +863,42 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 						placed = true
 					end
 				end
-				-- after columns populated, emit glyph groups for each placed accidental in all columns (right-to-left order)
+				-- after columns populated, ensure accidentals clear the clef and emit glyph groups
+				local min_accidental_x = nil
 				for _, col in ipairs(columns) do
 					for _, p in ipairs(col.placed) do
+						if not min_accidental_x or p.min_x < min_accidental_x then
+							min_accidental_x = p.min_x
+						end
+					end
+				end
+				if min_accidental_x then
+					local clef_right = clef_x + clef_width
+					local clearance = clef_right + math.max(ctx.note.accidental_gap or 0, ctx.staff.line_thickness or 0)
+					if min_accidental_x < clearance then
+						local shift = clearance - min_accidental_x
+						note_x = note_x + shift
+						for _, col in ipairs(columns) do
+							col.anchor_x = col.anchor_x + shift
+							for _, p in ipairs(col.placed) do
+								p.min_x = p.min_x + shift
+								p.max_x = p.max_x + shift
+							end
+						end
+					end
+				end
+
+				-- emit glyph groups for each placed accidental in all columns (right-to-left order)
+				for _, col in ipairs(columns) do
+					for _, p in ipairs(col.placed) do
+						local glyph_options
+						local glyph_offset = p.info.offset_spaces
+						if not glyph_offset or glyph_offset == 0 then
+							glyph_offset = ctx.accidentals.glyph_vertical_offsets[p.info.name]
+						end
+						if glyph_offset and glyph_offset ~= 0 then
+							glyph_options = { y_offset_spaces = glyph_offset }
+						end
 						local g, _ = self:glyph_group(
 							ctx,
 							p.info.name,
@@ -766,7 +906,8 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 							p.info.note_y,
 							"right",
 							"center",
-							"#000000"
+							"#000000",
+							glyph_options
 						)
 						if g then
 							table.insert(note_chunks, "  " .. g)
@@ -780,16 +921,18 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 				local steps = note.steps
 				if steps then
 					local note_y = self:staff_y_for_steps(ctx, steps)
+					local cluster_offset = note.cluster_offset_px or 0
+					local center_x = note_x + cluster_offset
 					local note_group, note_metrics =
-						self:glyph_group(ctx, note_cfg.glyph, note_x, note_y, "center", "center", "#000000")
+						self:glyph_group(ctx, note_cfg.glyph, center_x, note_y, "center", "center", "#000000")
 					if note_group then
 						table.insert(note_chunks, "  " .. note_group)
 						local ledger_steps = self:ledger_positions(ctx, steps)
 						if #ledger_steps > 0 then
 							local head_width = (note_metrics and note_metrics.width) or (staff.spacing * 1.0)
-							local extra_each_side = (staff.spacing * 0.8) * 0.5
-							local note_left = note_x - (head_width * 0.5)
-							local note_right = note_x + (head_width * 0.5)
+							local extra_each_side = ledger_extra_each_side
+							local note_left = center_x - (head_width * 0.5)
+							local note_right = center_x + (head_width * 0.5)
 							local ledger_left = note_left - ledger_cfg.extension - extra_each_side
 							local ledger_right = note_right + ledger_cfg.extension + extra_each_side
 							local ledger_length = ledger_right - ledger_left
@@ -823,14 +966,22 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 				local lead_gap = 0
 				local accidental_info = nil
 				local accidental_clearance = nil
+				local cluster_offset = note.cluster_offset_px or 0
+				local head_half_width = note_cfg.left_extent or (staff.spacing * 0.5)
+				local ledger_left_extra = 0
+				if #ledger_steps > 0 then
+					ledger_left_extra = ledger_cfg.extension + ledger_extra_each_side
+				end
+				local left_bias = cluster_offset
+				if ledger_left_extra > 0 then
+					left_bias = math.min(left_bias, cluster_offset - ledger_left_extra)
+				end
+				left_bias = math.min(left_bias, 0)
 				if note.accidental and ctx.accidentals.map[note.accidental] then
 					local accidental_name = ctx.accidentals.map[note.accidental]
-					-- Do not use bbox midpoint as vertical offset for single-note accidentals.
-					-- Use only explicit vertical offsets when defined.
 					local accidental_offset_spaces = 0
 					if ctx.accidentals.vertical_offsets then
-						accidental_offset_spaces = accidental_offset_spaces
-							+ (ctx.accidentals.vertical_offsets[note.accidental] or 0)
+						accidental_offset_spaces = ctx.accidentals.vertical_offsets[note.accidental] or 0
 					end
 					local accidental_group, accidental_metrics = self:glyph_group(
 						ctx,
@@ -849,31 +1000,30 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 							metrics = accidental_metrics,
 						}
 						accidental_clearance = math.max(ctx.note.accidental_gap * 0.5, staff.spacing * 0.1)
-						lead_gap = note_cfg.accidental_gap + (note_cfg.left_extent or 0)
+						lead_gap = note_cfg.accidental_gap + (note_cfg.left_extent or 0) - left_bias
 					end
 				end
 
 				if accidental_info and accidental_clearance and #ledger_steps > 0 then
-					local head_half_width = note_cfg.left_extent or (staff.spacing * 0.5)
-					local extra_each_side = (staff.spacing * 0.8) * 0.5
-					local required_note_x = accidental_info.anchor_x + accidental_clearance
-					required_note_x = required_note_x + ledger_cfg.extension + extra_each_side + head_half_width
-					local required_lead_gap = required_note_x - current_x
+					local extra_each_side = ledger_extra_each_side
+					local required_note_x = accidental_info.anchor_x + accidental_clearance + head_half_width
+					local required_lead_gap = required_note_x - current_x - left_bias
 					if required_lead_gap > lead_gap then
 						lead_gap = required_lead_gap
 					end
 				end
 
 				local note_x = current_x + lead_gap
+				local center_x = note_x + cluster_offset
 				local note_group, note_metrics =
-					self:glyph_group(ctx, note_cfg.glyph, note_x, note_y, "center", "center", "#000000")
+					self:glyph_group(ctx, note_cfg.glyph, center_x, note_y, "center", "center", "#000000")
 				if note_group then
 					table.insert(note_chunks, "  " .. note_group)
 					if #ledger_steps > 0 then
 						local head_width = (note_metrics and note_metrics.width) or (staff.spacing * 1.0)
-						local extra_each_side = (staff.spacing * 0.8) * 0.5
-						local note_left = note_x - (head_width * 0.5)
-						local note_right = note_x + (head_width * 0.5)
+						local extra_each_side = ledger_extra_each_side
+						local note_left = center_x - (head_width * 0.5)
+						local note_right = center_x + (head_width * 0.5)
 						local ledger_left = note_left - ledger_cfg.extension - extra_each_side
 						local ledger_right = note_right + ledger_cfg.extension + extra_each_side
 						local ledger_length = ledger_right - ledger_left
@@ -952,8 +1102,19 @@ function b_chord:paint(g)
 
 	table.insert(svg_chunks, "</svg>")
 
-	local svg = table.concat(svg_chunks, "\n")
-	g:draw_svg(svg, 0, 0)
+	self.svg = table.concat(svg_chunks, "\n")
+	g:draw_svg(self.svg, 0, 0)
+end
+
+-- ─────────────────────────────────────
+function b_chord:paint_layer_2(g)
+	if not self.playing then
+		g:set_color(255, 255, 255)
+		g:draw_line(1, 0, 1, self.height, 1)
+	else
+		g:set_color(0, 255, 0)
+		g:draw_line(self.playbar_position, 2, self.playbar_position, self.height - 2, 1)
+	end
 end
 
 -- ─────────────────────────────────────
