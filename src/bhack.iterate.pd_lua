@@ -11,11 +11,17 @@ end
 
 -- ─────────────────────────────────────
 function iterate:in_1_llll(atoms)
-	local t = _G.bhack_outlets[atoms[1]]
+	local id = atoms[1]
+	local llll = bhack.get_llll_fromid(self, id)
+	if llll == nil then
+		self:bhack_error("llll not found")
+		return
+	end
 
-	self:llll_outlet(2, self.outlet_id, { "begin" })
-	for _, v in ipairs(t) do
-		self:llll_outlet(1, self.outlet_id, v)
+	local t = llll:get_table()
+	for i, v in ipairs(t) do
+		local llll_i = bhack.llll:new_fromtable(self, v)
+		llll_i:output(1)
 	end
 	self:llll_outlet(2, self.outlet_id, { "end" })
 end
@@ -24,5 +30,4 @@ end
 function iterate:in_1_reload()
 	self:dofilex(self._scriptname)
 	self:initialize()
-	pd.post("ok")
 end

@@ -1,5 +1,3 @@
--- package.path = pd._loadpath .. "/?.lua;" .. package.path
-
 local b_chord = pd.Class:new():register("bhack.chords")
 local bhack = require("bhack")
 
@@ -11,7 +9,7 @@ function b_chord:initialize(_, args)
 	self.DIATONIC_STEPS = { C = 0, D = 1, E = 2, F = 3, G = 4, A = 5, B = 6 }
 	self.NOTES = { "C4" }
 	self.individual_chord = true
-	self.CHORDS = { }
+	self.CHORDS = {}
 
 	self.CLEF_GLYPHS = {}
 	for key, cfg in pairs(bhack.CLEF_CONFIGS) do
@@ -50,12 +48,6 @@ function b_chord:initialize(_, args)
 	self:set_size(self.width, self.height)
 
 	return true
-end
-
-function b_chord:llll_outlet(outlet, outletId, atoms)
-	local str = "<" .. outletId .. ">"
-	_G.bhack_outlets[str] = atoms
-	pd._outlet(self._object, outlet, "llll", { str })
 end
 
 --╭─────────────────────────────────────╮
@@ -106,37 +98,24 @@ function b_chord:in_1_addchord(args)
 	self:repaint()
 end
 
--- Allow explicitly toggling between single-note list mode and chords mode.
-function b_chord:in_1_usechords(args)
-	local raw = args and args[1]
-	if raw == nil then
-		return
-	end
-	local v = raw
-	if type(v) ~= "string" then
-		if type(v) == "number" then
-			v = tostring(v)
-		elseif type(v) == "boolean" then
-			v = v and "true" or "false"
-		else
-			v = tostring(v)
-		end
-	end
-	v = v:lower()
-	if v == "true" or v == "1" or v == "yes" or v == "on" then
-		self.individual_chord = false
-	elseif v == "false" or v == "0" or v == "no" or v == "off" then
-		self.individual_chord = true
-	else
-		-- unknown value: ignore
-		return
-	end
-	self:repaint()
-end
-
 -- ─────────────────────────────────────
 function b_chord:in_1_llll(atoms)
-	local t = _G.bhack_outlets[atoms[1]]
+	local id = atoms[1]
+	local llll = bhack.get_llll_fromid(self, id)
+	if llll == nil then
+		self:bhack_error("llll not found")
+		return
+	end
+
+	if llll.depth == 1 then
+		self.individual_chord = true
+		self.NOTES = llll:get_table()
+	else
+		self.individual_chord = false
+		self.CHORDS = llll:get_table()
+	end
+
+	self:repaint()
 end
 
 --╭─────────────────────────────────────╮
@@ -369,7 +348,8 @@ function b_chord:build_paint_context()
 			for _, note in ipairs(chord) do
 				local letter, accidental, octave = self:parse_pitch(note)
 				if letter and octave then
-					local steps_value = bhack.diatonic_value(self.DIATONIC_STEPS, letter, octave) - bottom_reference_value
+					local steps_value = bhack.diatonic_value(self.DIATONIC_STEPS, letter, octave)
+						- bottom_reference_value
 					table.insert(chord_parsed, {
 						raw = tostring(note),
 						letter = letter,
@@ -423,8 +403,8 @@ function b_chord:build_paint_context()
 			spacing = staff_spacing * 2.5,
 			accidental_gap = staff_spacing * 0.2,
 		},
-	notes = parsed_notes,
-	chords = parsed_chords,
+		notes = parsed_notes,
+		chords = parsed_chords,
 		accidentals = {
 			map = self.ACCIDENTAL_GLYPHS,
 			default_width = staff_spacing * 0.9,
@@ -541,15 +521,13 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 					end
 					if note.accidental and ctx.accidentals.map[note.accidental] then
 						local accidental_name = ctx.accidentals.map[note.accidental]
+						-- Avoid deriving a vertical offset from the accidental bbox midpoint.
+						-- That produced flats shifted one staff-position too low. Instead only
+						-- apply explicit vertical offsets if provided in ctx.accidentals.vertical_offsets.
 						local accidental_offset_spaces = 0
-						local accidental_bbox = ctx.glyph.bboxes[accidental_name]
-						if accidental_bbox and accidental_bbox.bBoxNE and accidental_bbox.bBoxSW then
-							local sw_y = accidental_bbox.bBoxSW[2] or 0
-							local ne_y = accidental_bbox.bBoxNE[2] or 0
-							accidental_offset_spaces = accidental_offset_spaces + ((sw_y + ne_y) * 0.5)
-						end
 						if ctx.accidentals.vertical_offsets then
-							accidental_offset_spaces = accidental_offset_spaces + (ctx.accidentals.vertical_offsets[note.accidental] or 0)
+							accidental_offset_spaces = accidental_offset_spaces
+								+ (ctx.accidentals.vertical_offsets[note.accidental] or 0)
 						end
 						-- collect accidental metric info; actual placement will be computed after lead_gap
 						local _, accidental_metrics = self:glyph_group(
@@ -629,7 +607,16 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 							local oy_max = math.min(abs_max_y, p.max_y)
 							if ox_max > ox_min and oy_max > oy_min then
 								-- overlapping rectangle exists; allow only if overlap lies within cutOuts of both glyphs
-								local function overlap_allowed(a_info, a_anchor_x, b_info, b_anchor_x, ox_min, ox_max, oy_min, oy_max)
+								local function overlap_allowed(
+									a_info,
+									a_anchor_x,
+									b_info,
+									b_anchor_x,
+									ox_min,
+									ox_max,
+									oy_min,
+									oy_max
+								)
 									-- need cutOuts on both
 									local abbox = ctx.glyph.bboxes[a_info.name]
 									local bbox_b = ctx.glyph.bboxes[b_info.name]
@@ -647,13 +634,19 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 										translate_x_units = -ne_x_units
 										local ox_min_units = ((ox_min - anchor_x) / gscale - translate_x_units) / units
 										local ox_max_units = ((ox_max - anchor_x) / gscale - translate_x_units) / units
-										local oy_min_units = ((oy_min - info.note_y) / gscale - info.metrics.translate_y_units) / units
-										local oy_max_units = ((oy_max - info.note_y) / gscale - info.metrics.translate_y_units) / units
+										local oy_min_units = (
+											(oy_min - info.note_y) / gscale - info.metrics.translate_y_units
+										) / units
+										local oy_max_units = (
+											(oy_max - info.note_y) / gscale - info.metrics.translate_y_units
+										) / units
 										-- check against cutOut rectangles if present: each cutOut specifies inner corner in spaces
 										local function inside_cutouts(bb, ox1, ox2, oy1, oy2)
 											-- check four cutOuts; if none present, return false
 											local has = bb.cutOutNE or bb.cutOutSE or bb.cutOutSW or bb.cutOutNW
-											if not has then return false end
+											if not has then
+												return false
+											end
 											-- cutOutNE: rectangle from (x,y) to bbox.max
 											if bb.cutOutNE then
 												local cx, cy = bb.cutOutNE[1] or 0, bb.cutOutNE[2] or 0
@@ -664,19 +657,31 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 											end
 											if bb.cutOutSE then
 												local cx, cy = bb.cutOutSE[1] or 0, bb.cutOutSE[2] or 0
-												if ox1 >= cx and oy2 <= cy then return true end
+												if ox1 >= cx and oy2 <= cy then
+													return true
+												end
 											end
 											if bb.cutOutSW then
 												local cx, cy = bb.cutOutSW[1] or 0, bb.cutOutSW[2] or 0
-												if ox2 <= cx and oy2 <= cy then return true end
+												if ox2 <= cx and oy2 <= cy then
+													return true
+												end
 											end
 											if bb.cutOutNW then
 												local cx, cy = bb.cutOutNW[1] or 0, bb.cutOutNW[2] or 0
-												if ox2 <= cx and oy1 >= cy then return true end
+												if ox2 <= cx and oy1 >= cy then
+													return true
+												end
 											end
 											return false
 										end
-										return inside_cutouts(bb, ox_min_units, ox_max_units, oy_min_units, oy_max_units)
+										return inside_cutouts(
+											bb,
+											ox_min_units,
+											ox_max_units,
+											oy_min_units,
+											oy_max_units
+										)
 									end
 
 									local a_ok = rect_in_cutouts(a_info, a_anchor_x, ox_min, ox_max, oy_min, oy_max)
@@ -684,7 +689,18 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 									return a_ok and b_ok
 								end
 								-- both glyphs must allow the overlap
-								if not overlap_allowed(a, col_anchor, p.info, p.anchor_x, ox_min, ox_max, oy_min, oy_max) then
+								if
+									not overlap_allowed(
+										a,
+										col_anchor,
+										p.info,
+										p.anchor_x,
+										ox_min,
+										ox_max,
+										oy_min,
+										oy_max
+									)
+								then
 									ok = false
 									break
 								end
@@ -696,7 +712,14 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 							local placed_max_x = abs_max_x
 							local placed_min_y = abs_min_y
 							local placed_max_y = abs_max_y
-							table.insert(col.placed, { min_x = placed_min_x, max_x = placed_max_x, min_y = placed_min_y, max_y = placed_max_y, info = a, anchor_x = col.anchor_x })
+							table.insert(col.placed, {
+								min_x = placed_min_x,
+								max_x = placed_max_x,
+								min_y = placed_min_y,
+								max_y = placed_max_y,
+								info = a,
+								anchor_x = col.anchor_x,
+							})
 							col.width = math.max(col.width or 0, (rel_max_x - rel_min_x))
 							placed = true
 							break
@@ -707,21 +730,47 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 						local last = columns[#columns]
 						local new_anchor = current_x
 						if last then
-							new_anchor = last.anchor_x - (last.width or (ctx.accidentals.default_width)) - (ctx.note.accidental_gap or 2)
+							new_anchor = last.anchor_x
+								- (last.width or ctx.accidentals.default_width)
+								- (ctx.note.accidental_gap or 2)
 						end
 						local abs_min_x = new_anchor + rel_min_x
 						local abs_max_x = new_anchor + rel_max_x
 						local abs_min_y = anchor_y + rel_min_y
 						local abs_max_y = anchor_y + rel_max_y
-						table.insert(columns, { anchor_x = new_anchor, placed = { { min_x = abs_min_x, max_x = abs_max_x, min_y = abs_min_y, max_y = abs_max_y, info = a, anchor_x = new_anchor, metrics = m } }, width = (rel_max_x - rel_min_x) })
+						table.insert(columns, {
+							anchor_x = new_anchor,
+							placed = {
+								{
+									min_x = abs_min_x,
+									max_x = abs_max_x,
+									min_y = abs_min_y,
+									max_y = abs_max_y,
+									info = a,
+									anchor_x = new_anchor,
+									metrics = m,
+								},
+							},
+							width = (rel_max_x - rel_min_x),
+						})
 						placed = true
 					end
 				end
 				-- after columns populated, emit glyph groups for each placed accidental in all columns (right-to-left order)
 				for _, col in ipairs(columns) do
 					for _, p in ipairs(col.placed) do
-						local g, _ = self:glyph_group(ctx, p.info.name, col.anchor_x, p.info.note_y, "right", "center", "#000000")
-						if g then table.insert(note_chunks, "  " .. g) end
+						local g, _ = self:glyph_group(
+							ctx,
+							p.info.name,
+							col.anchor_x,
+							p.info.note_y,
+							"right",
+							"center",
+							"#000000"
+						)
+						if g then
+							table.insert(note_chunks, "  " .. g)
+						end
 					end
 				end
 			end
@@ -731,7 +780,8 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 				local steps = note.steps
 				if steps then
 					local note_y = self:staff_y_for_steps(ctx, steps)
-					local note_group, note_metrics = self:glyph_group(ctx, note_cfg.glyph, note_x, note_y, "center", "center", "#000000")
+					local note_group, note_metrics =
+						self:glyph_group(ctx, note_cfg.glyph, note_x, note_y, "center", "center", "#000000")
 					if note_group then
 						table.insert(note_chunks, "  " .. note_group)
 						local ledger_steps = self:ledger_positions(ctx, steps)
@@ -775,15 +825,12 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 				local accidental_clearance = nil
 				if note.accidental and ctx.accidentals.map[note.accidental] then
 					local accidental_name = ctx.accidentals.map[note.accidental]
+					-- Do not use bbox midpoint as vertical offset for single-note accidentals.
+					-- Use only explicit vertical offsets when defined.
 					local accidental_offset_spaces = 0
-					local accidental_bbox = ctx.glyph.bboxes[accidental_name]
-					if accidental_bbox and accidental_bbox.bBoxNE and accidental_bbox.bBoxSW then
-						local sw_y = accidental_bbox.bBoxSW[2] or 0
-						local ne_y = accidental_bbox.bBoxNE[2] or 0
-						accidental_offset_spaces = accidental_offset_spaces + ((sw_y + ne_y) * 0.5)
-					end
 					if ctx.accidentals.vertical_offsets then
-						accidental_offset_spaces = accidental_offset_spaces + (ctx.accidentals.vertical_offsets[note.accidental] or 0)
+						accidental_offset_spaces = accidental_offset_spaces
+							+ (ctx.accidentals.vertical_offsets[note.accidental] or 0)
 					end
 					local accidental_group, accidental_metrics = self:glyph_group(
 						ctx,
@@ -818,7 +865,8 @@ function b_chord:draw_pitches(ctx, clef_metrics, clef_x)
 				end
 
 				local note_x = current_x + lead_gap
-				local note_group, note_metrics = self:glyph_group(ctx, note_cfg.glyph, note_x, note_y, "center", "center", "#000000")
+				local note_group, note_metrics =
+					self:glyph_group(ctx, note_cfg.glyph, note_x, note_y, "center", "center", "#000000")
 				if note_group then
 					table.insert(note_chunks, "  " .. note_group)
 					if #ledger_steps > 0 then
