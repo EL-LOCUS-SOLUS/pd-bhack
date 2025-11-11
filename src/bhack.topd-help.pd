@@ -1,4 +1,5 @@
-#N canvas 618 52 450 346 10;
+#N canvas 0 0 925 1009 10;
+#X declare -lib else;
 #X msg 133 125 1 [2 3] [4 5];
 #X msg 122 96 1 [2 2 3] [3 3 4 5] [1 [2 [3 2]]] 4;
 #X obj 122 205 bhack.iterate;
@@ -7,6 +8,7 @@
 #X msg 143 148 1 2 a 3;
 #X text 125 54 Convert llll data to pd atoms.;
 #X obj 122 174 bhack.define;
+#X obj 9 9 declare -lib else;
 #X connect 0 0 7 0;
 #X connect 1 0 7 0;
 #X connect 2 0 3 0;

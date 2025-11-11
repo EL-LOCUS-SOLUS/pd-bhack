@@ -1,0 +1,15 @@
+#N canvas 0 0 925 1009 10;
+#X declare -lib else;
+#X msg 108 119 1 2 3;
+#X text 122 24 Print llll stuff.;
+#X obj 3 4 declare -lib else;
+#X obj 108 144 bhack.define;
+#X obj 108 229 bhack.print;
+#X obj 108 197 bhack.op +;
+#X obj 187 144 bhack.define;
+#X msg 187 120 1;
+#X connect 0 0 3 0;
+#X connect 3 0 5 0;
+#X connect 5 0 4 0;
+#X connect 6 0 5 1;
+#X connect 7 0 6 0;

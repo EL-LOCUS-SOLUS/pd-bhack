@@ -115,7 +115,7 @@ function llll:print()
 			table.insert(parts, tostring(v))
 		end
 	end
-	pd.post(self._s_open .. table.concat(parts, " ") .. self._s_close)
+	pd.post(table.concat(parts, " "))
 end
 
 -- ─────────────────────────────────────
