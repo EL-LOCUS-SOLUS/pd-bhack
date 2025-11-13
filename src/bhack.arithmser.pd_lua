@@ -3,16 +3,43 @@ local b_arithm = pd.Class:new():register("bhack.arithmser")
 
 -- ─────────────────────────────────────
 function b_arithm:initialize(name, args)
-	self.inlets = 1
+	self.inlets = 3
 	self.outlets = 1
-	self.outlet_id = bhack.random_outid()
+	if #args == 3 then 
+		self.first = args[1]
+		self.last = args[2]
+		self.step = tonumber(args[3])
+	else
+		self.first = 0
+		self.last = 10
+		self.step = 1
+	end
 	return true
 end
 
 -- ─────────────────────────────────────
-function b_arithm:in_1_bang(atoms)
-	local t = _G.bhack_outlets[atoms[1]]
-	self:outlet(1, "float", { #t })
+function b_arithm:in_1_bang()
+	local result = {}
+	for i = self.first, self.last, self.step do
+		table.insert(result, i)
+	end
+	local out_llll = bhack.llll:new_fromtable(self, result)
+	out_llll:output(1)
+end
+
+-- ─────────────────────────────────────
+function b_arithm:in_1_float(f)
+	self.first = f
+end
+
+-- ─────────────────────────────────────
+function b_arithm:in_2_float(f)
+	self.last = f
+end
+
+-- ─────────────────────────────────────
+function b_arithm:in_3_float(f)
+	self.step = f
 end
 
 -- ─────────────────────────────────────

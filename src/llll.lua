@@ -132,6 +132,11 @@ function M:to_string(tbl)
 			table.insert(parts, tostring(v))
 		end
 	end
+	
+	if self._s_open == nil or self._s_close == nil then
+		self._s_open = "["
+		self._s_close = "]"
+	end	
 
 	return self._s_open .. table.concat(parts, " ") .. self._s_close
 end

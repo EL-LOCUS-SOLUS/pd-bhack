@@ -26,24 +26,23 @@ end
 function M.get_llll_fromid(self, id)
 	local original = _G.bhack_outlets[id]
 	if not original then
-		return nil
+		error("llll with id " .. tostring(id) .. " not found")
 	end
 
-	local function deep_copy(obj)
+	local function deep_copy_table(obj)
 		if type(obj) ~= "table" then
 			return obj
 		end
 		local copy = {}
 		for k, v in pairs(obj) do
-			copy[k] = deep_copy(v)
+			copy[k] = deep_copy_table(v)
 		end
-		return setmetatable(copy, getmetatable(obj))
+		return copy
 	end
 
-	local copy = deep_copy(original)
-	copy.pdobj = self
-	copy.pdobj._llll_id = tostring({}):match("0x[%x]+")
-	return copy
+	local cloned_table = deep_copy_table(original:get_table())
+	local cloned = M.llll:new_fromtable(self, cloned_table)
+	return cloned
 end
 
 -- ─────────────────────────────────────

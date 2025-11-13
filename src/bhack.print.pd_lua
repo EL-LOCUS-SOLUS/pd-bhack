@@ -13,8 +13,7 @@ function b_print:in_1_llll(atoms)
 	local id = atoms[1]
 	local llll = bhack.get_llll_fromid(self, id)
 	if llll == nil then
-		self:bhack_error("llll not found")
-		return
+		error("llll not found")
 	end
 
 	llll:print()

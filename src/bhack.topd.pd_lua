@@ -11,16 +11,21 @@ end
 
 -- ─────────────────────────────────────
 function b_topd:in_1_llll(atoms)
-	local t = _G.bhack_outlets[atoms[1]]
-	if type(t) == "table" then
-		for _, v in pairs(t) do
+	local id = atoms[1]
+	local llll = bhack.get_llll_fromid(self, id):get_table()
+	if llll == nil then
+		self:bhack_error("llll not found")
+		return
+	end
+
+	if type(llll) == "table" then
+		for _, v in pairs(llll) do
 			if type(v) == "table" then
-				self:error("List of list not supported by Pd, use bhack.flat")
-				return
+				error("[" .. self._name .. "] Nested llll tables are not supported")
 			end
 		end
 	end
-	self:outlet(1, "list", { t })
+	self:outlet(1, "list", { llll })
 end
 
 -- ─────────────────────────────────────

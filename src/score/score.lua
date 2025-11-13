@@ -74,11 +74,8 @@ M.ACCIDENTAL_GLYPHS = {
 	["#vvv"] = "accidentalSharpThreeArrowsDown",
 }
 
--- TODO: Make the correction right (this is the lazy way)
+-- TODO: Make the correction of anchor right (this is the lazy way)
 M.NATURAL_ACCIDENTAL_KEYS = {
-	--["^"] = true,
-	--["^^"] = true,
-	--["^^^"] = true,
 	["v"] = true,
 	["vv"] = true,
 	["vvv"] = true,
@@ -675,8 +672,6 @@ function M.parse_pitch(pitch)
 
 	return letter, accidental, octave
 end
-
-
 
 -- ─────────────────────────────────────
 local function resolve_clef_config(clef_name_or_key)
@@ -1347,14 +1342,14 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 		return nil, current_x, { has_accidentals = false, lead_gap = 0 }
 	end
 
-	local staff = ctx.staff 
-	local note_cfg = ctx.note 
-	local ledger_cfg = ctx.ledger 
-	local staff_spacing = staff.spacing 
+	local staff = ctx.staff
+	local note_cfg = ctx.note
+	local ledger_cfg = ctx.ledger
+	local staff_spacing = staff.spacing
 	local ledger_extra_each_side = (staff_spacing * 0.8) * 0.5
 	local columns_gap = math.max(note_cfg.accidental_gap or 0, staff_spacing * 0.18)
 	ctx.accidentals = { map = M.ACCIDENTAL_GLYPHS }
-	
+
 	local chord_min_left = 0
 	for _, note in ipairs(notes) do
 		local offset = note.cluster_offset_px or 0
@@ -1431,7 +1426,9 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 		end
 
 		if accidental_key and M.NATURAL_ACCIDENTAL_KEYS[accidental_key] then
-			local step_shift = ctx.accidentals and ctx.accidentals.natural_step_shift or M.NATURAL_ACCIDENTAL_STEP_SHIFT or 0
+			local step_shift = ctx.accidentals and ctx.accidentals.natural_step_shift
+				or M.NATURAL_ACCIDENTAL_STEP_SHIFT
+				or 0
 			if step_shift ~= 0 then
 				local spaces_shift = step_shift * 0.5
 				offset = offset - spaces_shift -- natural arrowheads sit two staff steps too high without this correction
