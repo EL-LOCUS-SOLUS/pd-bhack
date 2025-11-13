@@ -1,38 +1,15 @@
-local score = _G.bhack_score or {}
-_G.bhack_score = score
+local M = {}
 
 -- External helpers (from your environment). Keep as-is.
 local slaxml = require("score/slaxml")
 local json = require("score/json")
 local utils = require("score/utils")
 
-local function printTable(t, depth, maxDepth)
-	depth = depth or 0
-	maxDepth = maxDepth or 5
-	if depth > maxDepth then
-		return
-	end
-
-	if type(t) ~= "table" then
-		return
-	end
-
-	for k, v in pairs(t) do
-		local indent = string.rep("  ", depth)
-		if type(v) == "table" then
-			pd.post(string.format("%s%s: (table)", indent, tostring(k)))
-			printTable(v, depth + 1, maxDepth)
-		else
-			pd.post(string.format("%s%s: %s", indent, tostring(k), tostring(v)))
-		end
-	end
-end
-
 --╭─────────────────────────────────────╮
 --│          Global Configuration       │
 --╰─────────────────────────────────────╯
 
-score.CLEF_CONFIGS = {
+M.CLEF_CONFIGS = {
 	g = {
 		glyph = "gClef",
 		bottom_line = { letter = "E", octave = 4 },
@@ -52,13 +29,13 @@ score.CLEF_CONFIGS = {
 		key = "c",
 	},
 }
-score.CLEF_CONFIG_BY_GLYPH = {
-	gClef = score.CLEF_CONFIGS.g,
-	fClef = score.CLEF_CONFIGS.f,
-	cClef = score.CLEF_CONFIGS.c,
+M.CLEF_CONFIG_BY_GLYPH = {
+	gClef = M.CLEF_CONFIGS.g,
+	fClef = M.CLEF_CONFIGS.f,
+	cClef = M.CLEF_CONFIGS.c,
 }
 
-score.ACCIDENTAL_GLYPHS = {
+M.ACCIDENTAL_GLYPHS = {
 	["#"] = "accidentalSharp",
 	["b"] = "accidentalFlat",
 	["+"] = "accidentalQuarterToneSharpStein",
@@ -67,7 +44,7 @@ score.ACCIDENTAL_GLYPHS = {
 	["#+"] = "accidentalThreeQuarterTonesSharpStein",
 }
 
-score.TIME_SIGNATURE_DIGITS = {
+M.TIME_SIGNATURE_DIGITS = {
 	["0"] = "timeSig0",
 	["1"] = "timeSig1",
 	["2"] = "timeSig2",
@@ -80,7 +57,7 @@ score.TIME_SIGNATURE_DIGITS = {
 	["9"] = "timeSig9",
 }
 
-score.DIATONIC_STEPS = { C = 0, D = 1, E = 2, F = 3, G = 4, A = 5, B = 6 }
+M.DIATONIC_STEPS = { C = 0, D = 1, E = 2, F = 3, G = 4, A = 5, B = 6 }
 
 local STEM_DIRECTION_THRESHOLDS = {
 	g = { letter = "B", octave = 4 },
@@ -88,31 +65,7 @@ local STEM_DIRECTION_THRESHOLDS = {
 	f = { letter = "F", octave = 3 },
 }
 
--- Map flag counts to the Bravura glyphs for each stem direction.
-local FLAG_GLYPH_MAP = {
-	up = {
-		[1] = "flag8thUp",
-		[2] = "flag16thUp",
-		[3] = "flag32ndUp",
-		[4] = "flag64thUp",
-		[5] = "flag128thUp",
-		[6] = "flag256thUp",
-		[7] = "flag512thUp",
-		[8] = "flag1024thUp",
-	},
-	down = {
-		[1] = "flag8thDown",
-		[2] = "flag16thDown",
-		[3] = "flag32ndDown",
-		[4] = "flag64thDown",
-		[5] = "flag128thDown",
-		[6] = "flag256thDown",
-		[7] = "flag512thDown",
-		[8] = "flag1024thDown",
-	},
-}
-
-score.DEFAULT_CLEF_LAYOUT = {
+M.DEFAULT_CLEF_LAYOUT = {
 	padding_spaces = 0.1,
 	horizontal_offset_spaces = 0.8,
 	spacing_after = 2.0,
@@ -135,24 +88,24 @@ function FontLoaded:new()
 end
 
 function FontLoaded.readGlyphNames()
-	if score.Bravura_Glyphnames and score.Bravura_Metadata then
+	if M.Bravura_Glyphnames and M.Bravura_Metadata then
 		return
 	end
 	local glyphName = utils.script_path() .. "/glyphnames.json"
 	local f = assert(io.open(glyphName, "r"), "Bravura glyphnames.json not found")
 	local glyphJson = f:read("*all")
 	f:close()
-	score.Bravura_Glyphnames = json.decode(glyphJson)
+	M.Bravura_Glyphnames = json.decode(glyphJson)
 
 	local metaName = utils.script_path() .. "/bravura_metadata.json"
 	f = assert(io.open(metaName, "r"), "Bravura metadata not found")
 	glyphJson = f:read("*all")
 	f:close()
-	score.Bravura_Metadata = json.decode(glyphJson)
+	M.Bravura_Metadata = json.decode(glyphJson)
 end
 
 function FontLoaded.readFont()
-	if score.Bravura_Glyphs and score.Bravura_Font then
+	if M.Bravura_Glyphs and M.Bravura_Font then
 		return
 	end
 	local svgfile = utils.script_path() .. "/Bravura.svg"
@@ -210,8 +163,8 @@ function FontLoaded.readFont()
 		end,
 	})
 	parser:parse(xml, { stripWhitespace = true })
-	score.Bravura_Glyphs = loaded_glyphs
-	score.Bravura_Font = loaded_font
+	M.Bravura_Glyphs = loaded_glyphs
+	M.Bravura_Font = loaded_font
 end
 
 function FontLoaded:ensure()
@@ -223,7 +176,7 @@ function FontLoaded:ensure()
 	self.loaded = true
 end
 
-score.FontLoaded = FontLoaded
+M.FontLoaded = FontLoaded
 
 --╭─────────────────────────────────────╮
 --│                Note                 │
@@ -236,7 +189,7 @@ function Note:new(pitch, config)
 
 	local obj = setmetatable({}, self)
 	obj.raw = pitch
-	obj.letter, obj.accidental, obj.octave = score.parse_pitch(pitch, score.DIATONIC_STEPS)
+	obj.letter, obj.accidental, obj.octave = M.parse_pitch(pitch, M.DIATONIC_STEPS)
 
 	local notehead = "noteheadBlack"
 	local explicit_notehead = false
@@ -273,7 +226,7 @@ function Note:new(pitch, config)
 	return obj
 end
 
-score.note = Note
+M.note = Note
 
 --╭─────────────────────────────────────╮
 --│                Chord                │
@@ -295,7 +248,7 @@ function Chord:new(name, notes, slot_info)
 	end
 
 	local auto_notehead = slot_info
-		and (slot_info.notehead or (slot_info.figure and score.figure_to_notehead(slot_info.figure)))
+		and (slot_info.notehead or (slot_info.figure and M.figure_to_notehead(slot_info.figure)))
 
 	for _, n in ipairs(notes) do
 		local note_obj
@@ -358,7 +311,7 @@ local function instantiate_chord_blueprint(blueprint, slot_info)
 	return Chord:new(blueprint.name, note_specs, slot_info)
 end
 
-score.chord = Chord
+M.chord = Chord
 
 --╭─────────────────────────────────────╮
 --│               Measure               │
@@ -366,7 +319,7 @@ score.chord = Chord
 local Measure = {}
 Measure.__index = Measure
 
-function score.figure_to_notehead(duration_whole)
+function M.figure_to_notehead(duration_whole)
 	if duration_whole >= 4 then
 		return "noteheadBlack"
 	elseif duration_whole >= 2 then
@@ -377,7 +330,7 @@ function score.figure_to_notehead(duration_whole)
 end
 
 -- ─────────────────────────────────────
-function score.figure_spacing_multiplier(duration_whole)
+function M.figure_spacing_multiplier(duration_whole)
 	local value = tonumber(duration_whole)
 	if not value or value <= 0 then
 		return 0
@@ -448,11 +401,11 @@ function Measure:build()
 			duration = duration_whole,
 			figure = duration_whole,
 		}
-		self.spacing_multipliers[i] = score.figure_spacing_multiplier(duration_whole)
+		self.spacing_multipliers[i] = M.figure_spacing_multiplier(duration_whole)
 	end
 end
 
-score.measure = Measure
+M.measure = Measure
 
 --╭─────────────────────────────────────╮
 --│             Voice Class             │
@@ -472,7 +425,6 @@ function Voice:new(material)
 		if #m == 2 then
 			local ts = m[1]
 			local tree = m[2]
-			local depth = bhack_utils.table_depth(tree)
 			current_time_sig = { ts[1], ts[2] }
 			table.insert(obj.measures, Measure:new(current_time_sig, tree, i))
 		else
@@ -486,7 +438,6 @@ function Voice:new(material)
 		for slot_index, slot in ipairs(measure.slots) do
 			local duration = slot.duration
 			local figure = 1 / duration
-			--pd.post("Duration: " .. duration .. " => 1/" .. figure)
 
 			slot_refs[#slot_refs + 1] = {
 				measure = measure,
@@ -494,7 +445,7 @@ function Voice:new(material)
 				index = slot_index,
 				duration = duration,
 				figure = figure,
-				notehead = score.figure_to_notehead(figure),
+				notehead = M.figure_to_notehead(figure),
 				spacing_multiplier = measure.spacing_multipliers[slot_index],
 			}
 		end
@@ -542,15 +493,15 @@ function Voice:new(material)
 	return obj
 end
 
-score.voice = Voice
+M.voice = Voice
 
 --╭─────────────────────────────────────╮
 --│      Rendering Helper Methods       │
 --╰─────────────────────────────────────╯
 local function units_per_em_value()
 	local default_units = 2048
-	if score.Bravura_Font and score.Bravura_Font["units-per-em"] then
-		local raw = score.Bravura_Font["units-per-em"][1]
+	if M.Bravura_Font and M.Bravura_Font["units-per-em"] then
+		local raw = M.Bravura_Font["units-per-em"][1]
 		local parsed = tonumber(raw)
 		if parsed and parsed > 0 then
 			return parsed
@@ -560,12 +511,12 @@ local function units_per_em_value()
 end
 
 -- ─────────────────────────────────────
-function score.diatonic_value(steps_table, letter, octave)
+function M.diatonic_value(steps_table, letter, octave)
 	return (octave * 7) + steps_table[letter]
 end
 
 -- ─────────────────────────────────────
-local function compute_staff_geometry(w, h, clef_glyph, clef_config, layout_defaults, units_per_em)
+local function compute_staff_geometry(w, h, clef_glyph, layout_defaults, units_per_em)
 	local outer_margin_x = 2
 	local outer_margin_y = math.max(h * 0.1, 12) + 10
 	local drawable_width = w - (outer_margin_x * 2)
@@ -575,7 +526,7 @@ local function compute_staff_geometry(w, h, clef_glyph, clef_config, layout_defa
 	end
 
 	local function clef_span_spaces(glyph_name, fallback)
-		local meta = score.Bravura_Metadata
+		local meta = M.Bravura_Metadata
 		local bbox = meta and meta.glyphBBoxes and meta.glyphBBoxes[glyph_name]
 		if bbox and bbox.bBoxNE and bbox.bBoxSW then
 			local ne = bbox.bBoxNE[2] or 0
@@ -585,23 +536,23 @@ local function compute_staff_geometry(w, h, clef_glyph, clef_config, layout_defa
 		return fallback
 	end
 
-	if not score.MAX_CLEF_SPAN_SPACES then
+	if not M.MAX_CLEF_SPAN_SPACES then
 		local max_span = 0
-		for _, cfg in pairs(score.CLEF_CONFIGS) do
-			local span = clef_span_spaces(cfg.glyph, score.DEFAULT_CLEF_LAYOUT.fallback_span_spaces)
+		for _, cfg in pairs(M.CLEF_CONFIGS) do
+			local span = clef_span_spaces(cfg.glyph, M.DEFAULT_CLEF_LAYOUT.fallback_span_spaces)
 			if span and span > max_span then
 				max_span = span
 			end
 		end
-		score.MAX_CLEF_SPAN_SPACES = (max_span > 0) and max_span or score.DEFAULT_CLEF_LAYOUT.fallback_span_spaces
+		M.MAX_CLEF_SPAN_SPACES = (max_span > 0) and max_span or M.DEFAULT_CLEF_LAYOUT.fallback_span_spaces
 	end
 
-	local current_clef_span = clef_span_spaces(clef_glyph, score.DEFAULT_CLEF_LAYOUT.fallback_span_spaces)
+	local current_clef_span = clef_span_spaces(clef_glyph, M.DEFAULT_CLEF_LAYOUT.fallback_span_spaces)
 	local staff_span_spaces = 4
 	local clef_padding_spaces = layout_defaults.padding_spaces
 
 	local space_px_from_staff = drawable_height / staff_span_spaces
-	local limit_from_max_span = drawable_height / (score.MAX_CLEF_SPAN_SPACES + (clef_padding_spaces * 2))
+	local limit_from_max_span = drawable_height / (M.MAX_CLEF_SPAN_SPACES + (clef_padding_spaces * 2))
 	local limit_from_current_span = drawable_height / (current_clef_span + (clef_padding_spaces * 2))
 	local staff_spacing = math.min(space_px_from_staff, limit_from_max_span, limit_from_current_span)
 	if staff_spacing <= 0 then
@@ -618,7 +569,7 @@ local function compute_staff_geometry(w, h, clef_glyph, clef_config, layout_defa
 
 	local units_per_space = units_per_em / 4
 	local glyph_scale = staff_spacing / units_per_space
-	local engraving_defaults = score.Bravura_Metadata and score.Bravura_Metadata.engravingDefaults or {}
+	local engraving_defaults = M.Bravura_Metadata and M.Bravura_Metadata.engravingDefaults or {}
 	local staff_line_thickness = math.max(1, staff_spacing * (engraving_defaults.staffLineThickness or 0.13))
 	local ledger_extension = staff_spacing * (engraving_defaults.legerLineExtension or 0.4)
 
@@ -645,7 +596,7 @@ local function compute_staff_geometry(w, h, clef_glyph, clef_config, layout_defa
 end
 
 -- ─────────────────────────────────────
-function score.parse_pitch(pitch, steps_lookup)
+function M.parse_pitch(pitch, steps_lookup)
 	if type(pitch) ~= "string" then
 		pitch = tostring(pitch)
 	end
@@ -665,11 +616,11 @@ end
 
 -- ─────────────────────────────────────
 local function resolve_clef_config(clef_name_or_key)
-	if score.CLEF_CONFIG_BY_GLYPH[clef_name_or_key] then
-		return score.CLEF_CONFIG_BY_GLYPH[clef_name_or_key]
+	if M.CLEF_CONFIG_BY_GLYPH[clef_name_or_key] then
+		return M.CLEF_CONFIG_BY_GLYPH[clef_name_or_key]
 	end
 	local k = tostring(clef_name_or_key or "g"):lower()
-	return score.CLEF_CONFIGS[k] or score.CLEF_CONFIGS.g
+	return M.CLEF_CONFIGS[k] or M.CLEF_CONFIGS.g
 end
 
 -- ─────────────────────────────────────
@@ -682,8 +633,8 @@ local function stem_direction(clef_key, note)
 	if not threshold or not letter or not octave then
 		return "up"
 	end
-	local note_value = score.diatonic_value(score.DIATONIC_STEPS, letter, octave)
-	local threshold_value = score.diatonic_value(score.DIATONIC_STEPS, threshold.letter, threshold.octave)
+	local note_value = M.diatonic_value(M.DIATONIC_STEPS, letter, octave)
+	local threshold_value = M.diatonic_value(M.DIATONIC_STEPS, threshold.letter, threshold.octave)
 	return (note_value >= threshold_value) and "down" or "up"
 end
 
@@ -719,25 +670,25 @@ local function glyph_width_px(ctx, glyph_name)
 end
 
 -- ─────────────────────────────────────
-function score.getGlyph(name)
-	if not score.Bravura_Glyphnames then
+function M.getGlyph(name)
+	if not M.Bravura_Glyphnames then
 		return nil
 	end
-	local entry = score.Bravura_Glyphnames[name]
+	local entry = M.Bravura_Glyphnames[name]
 	if not entry then
 		return nil
 	end
 	local codepoint = entry.codepoint:gsub("U%+", "uni")
-	return score.Bravura_Glyphs and score.Bravura_Glyphs[codepoint]
+	return M.Bravura_Glyphs and M.Bravura_Glyphs[codepoint]
 end
 
 -- ─────────────────────────────────────
-function score.glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y, fill_color, options)
+function M.glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y, fill_color, options)
 	options = options or {}
 	align_x = align_x or "center"
 	align_y = align_y or "center"
 
-	local glyph = score.getGlyph(glyph_name)
+	local glyph = M.getGlyph(glyph_name)
 	local bbox = ctx.glyph.bboxes[glyph_name]
 	if not glyph or glyph.d == "" or not bbox or not bbox.bBoxSW or not bbox.bBoxNE then
 		return nil, nil
@@ -844,7 +795,7 @@ local function draw_clef(ctx)
 	local vertical_offset = clef.vertical_offset_spaces or 0
 	local glyph_name = clef.name or "gClef"
 
-	local clef_group, clef_metrics = score.glyph_group(
+	local clef_group, clef_metrics = M.glyph_group(
 		ctx,
 		glyph_name,
 		clef_x,
@@ -970,7 +921,7 @@ local function render_time_signature(ctx, origin_x, metrics, meta)
 			local advance = digit.width or 0
 			if glyph_name then
 				local glyph_chunk, glyph_metrics =
-					score.glyph_group(ctx, glyph_name, cursor_x, y, "left", align_y or "center", "#000000")
+					M.glyph_group(ctx, glyph_name, cursor_x, y, "left", align_y or "center", "#000000")
 				if glyph_chunk then
 					table.insert(lines, "    " .. glyph_chunk)
 				end
@@ -1001,12 +952,12 @@ local function render_time_signature(ctx, origin_x, metrics, meta)
 end
 
 -- ─────────────────────────────────────
-function score.staff_y_for_steps(ctx, steps)
+function M.staff_y_for_steps(ctx, steps)
 	return ctx.staff.bottom - (steps * (ctx.staff.spacing * 0.5))
 end
 
 -- ─────────────────────────────────────
-function score.ledger_positions(_, steps)
+function M.ledger_positions(_, steps)
 	local positions = {}
 	if steps <= -2 then
 		local step = -2
@@ -1025,7 +976,7 @@ function score.ledger_positions(_, steps)
 end
 
 -- ─────────────────────────────────────
-function score.assign_cluster_offsets(notes, threshold_steps, offset_px)
+function M.assign_cluster_offsets(notes, threshold_steps, offset_px)
 	if not notes or offset_px <= 0 then
 		return
 	end
@@ -1074,7 +1025,7 @@ end
 -- ─────────────────────────────────────
 local function draw_barline(ctx, x, glyph_name)
 	local staff = ctx.staff
-	local group, metrics = score.glyph_group(
+	local group, metrics = M.glyph_group(
 		ctx,
 		glyph_name or "barlineSingle",
 		x,
@@ -1139,7 +1090,7 @@ local function compute_chord_stem_direction(clef_key, chord)
 	local sum, count = 0, 0
 	for _, n in ipairs(chord.notes) do
 		if n.letter and n.octave then
-			sum = sum + score.diatonic_value(score.DIATONIC_STEPS, n.letter, n.octave)
+			sum = sum + M.diatonic_value(M.DIATONIC_STEPS, n.letter, n.octave)
 			count = count + 1
 		end
 	end
@@ -1149,7 +1100,7 @@ local function compute_chord_stem_direction(clef_key, chord)
 	end
 
 	local average = sum / count
-	local threshold_value = score.diatonic_value(score.DIATONIC_STEPS, threshold.letter, threshold.octave)
+	local threshold_value = M.diatonic_value(M.DIATONIC_STEPS, threshold.letter, threshold.octave)
 	return (average >= threshold_value) and "down" or "up"
 end
 
@@ -1223,7 +1174,7 @@ local function render_flag(ctx, note, stem_metrics, direction)
 	end
 
 	local flag_chunk, flag_metrics =
-		score.glyph_group(ctx, glyph_name, flag_anchor_x, flag_anchor_y, align_x, align_y, "#000000")
+		M.glyph_group(ctx, glyph_name, flag_anchor_x, flag_anchor_y, align_x, align_y, "#000000")
 	if flag_metrics then
 		flag_metrics.anchor_x = flag_anchor_x
 		flag_metrics.anchor_y = flag_anchor_y
@@ -1282,7 +1233,7 @@ local function render_stem(ctx, note, head_metrics, direction_override)
 		anchor_x = (note.render_x or 0) + right_extent - 0.5
 	end
 
-	local stem_group, stem_metrics = score.glyph_group(ctx, "stem", anchor_x, anchor_y, align_x, align_y, "#000000")
+	local stem_group, stem_metrics = M.glyph_group(ctx, "stem", anchor_x, anchor_y, align_x, align_y, "#000000")
 	if stem_metrics then
 		stem_metrics.anchor_x = anchor_x
 		stem_metrics.anchor_y = anchor_y
@@ -1340,9 +1291,9 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 	local columns_gap = math.max(note_cfg.accidental_gap or 0, staff_spacing * 0.18)
 
 	if not ctx.accidentals then
-		ctx.accidentals = { map = score.ACCIDENTAL_GLYPHS }
+		ctx.accidentals = { map = M.ACCIDENTAL_GLYPHS }
 	elseif not ctx.accidentals.map then
-		ctx.accidentals.map = score.ACCIDENTAL_GLYPHS
+		ctx.accidentals.map = M.ACCIDENTAL_GLYPHS
 	end
 
 	local chord_min_left = 0
@@ -1350,7 +1301,7 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 		local offset = note.cluster_offset_px or 0
 		local effective_left = offset
 		if note.steps then
-			local ledgers = score.ledger_positions(ctx, note.steps)
+			local ledgers = M.ledger_positions(ctx, note.steps)
 			if #ledgers > 0 then
 				effective_left = math.min(effective_left, offset - (ledger_cfg.extension or 0) - ledger_extra_each_side)
 			end
@@ -1382,7 +1333,7 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 		end
 
 		local offset = 0
-		local meta = score.Bravura_Metadata
+		local meta = M.Bravura_Metadata
 		if meta and meta.glyphBBoxes and meta.glyphBBoxes[glyph_name] then
 			local bbox = meta.glyphBBoxes[glyph_name]
 			if bbox and bbox.bBoxNE and bbox.bBoxSW then
@@ -1427,12 +1378,12 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 	local chord_accidentals = {}
 	for _, note in ipairs(notes) do
 		local accidental_key = note.accidental
-		local glyph_name = accidental_key and score.ACCIDENTAL_GLYPHS[accidental_key]
+		local glyph_name = accidental_key and M.ACCIDENTAL_GLYPHS[accidental_key]
 		if glyph_name and note.steps then
-			local note_y = score.staff_y_for_steps(ctx, note.steps)
+			local note_y = M.staff_y_for_steps(ctx, note.steps)
 			local y_offset = glyph_vertical_offset(glyph_name, accidental_key)
 			local glyph_options = (y_offset ~= 0) and { y_offset_spaces = y_offset } or nil
-			local _, metrics = score.glyph_group(ctx, glyph_name, 0, 0, "right", "center", "#000000", glyph_options)
+			local _, metrics = M.glyph_group(ctx, glyph_name, 0, 0, "right", "center", "#000000", glyph_options)
 			if metrics then
 				chord_accidentals[#chord_accidentals + 1] = {
 					name = glyph_name,
@@ -1647,7 +1598,7 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 	local fragments = {}
 	for _, col in ipairs(columns) do
 		for _, placed in ipairs(col.placed) do
-			local glyph = score.glyph_group(
+			local glyph = M.glyph_group(
 				ctx,
 				placed.info.name,
 				col.anchor_x,
@@ -1720,10 +1671,10 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 		end
 		for _, note in ipairs(chord.notes) do
 			if note.raw and (not note.letter or not note.octave) then
-				note.letter, note.accidental, note.octave = score.parse_pitch(note.raw, score.DIATONIC_STEPS)
+				note.letter, note.accidental, note.octave = M.parse_pitch(note.raw, M.DIATONIC_STEPS)
 			end
 			if note.letter and note.octave then
-				note.steps = score.diatonic_value(score.DIATONIC_STEPS, note.letter, note.octave) - bottom_ref
+				note.steps = M.diatonic_value(M.DIATONIC_STEPS, note.letter, note.octave) - bottom_ref
 			end
 			note.cluster_offset_px = 0
 			note.stem_anchor_x = nil
@@ -1732,7 +1683,7 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 			note.stem_align_y = nil
 			note.stem_metrics = nil
 		end
-		score.assign_cluster_offsets(chord.notes, 1, cluster_offset_px)
+		M.assign_cluster_offsets(chord.notes, 1, cluster_offset_px)
 	end
 
 	local function chord_blueprint(chord)
@@ -1798,8 +1749,8 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 			-- noteheads and ledgers
 			for _, note in ipairs(chord.notes) do
 				local center_x = chord_x + (note.cluster_offset_px or 0)
-				local note_y = score.staff_y_for_steps(ctx, note.steps)
-				local g, m = score.glyph_group(
+				local note_y = M.staff_y_for_steps(ctx, note.steps)
+				local g, m = M.glyph_group(
 					ctx,
 					note.notehead or "noteheadWhite",
 					center_x,
@@ -1832,7 +1783,7 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 					end
 
 					-- ledgers
-					local ledgers = score.ledger_positions(ctx, note.steps)
+					local ledgers = M.ledger_positions(ctx, note.steps)
 					if #ledgers > 0 then
 						head_width_px = (m and m.width) or (staff_spacing * 1.0)
 						local extra_each_side = (staff_spacing * 0.8) * 0.5
@@ -1843,7 +1794,7 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 							chord_rightmost = right
 						end
 						for _, st in ipairs(ledgers) do
-							local y = score.staff_y_for_steps(ctx, st)
+							local y = M.staff_y_for_steps(ctx, st)
 							table.insert(
 								ledger_svg,
 								string.format(
@@ -1905,7 +1856,7 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 
 		-- advance
 		local adv = spacing_sequence[index] or note_cfg.spacing
-		current_x = chord_x + adv 
+		current_x = chord_x + adv
 
 		-- without tree, try to adapt to the current size of the canvas
 		if not ctx.render_tree then
@@ -1917,7 +1868,6 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 					current_x = estimated_x
 				end
 			end
-			
 		end
 
 		-- barline at measure end
@@ -2006,7 +1956,7 @@ local function compute_spacing_from_measures(ctx, measures)
 		for idx, slot in ipairs(slots) do
 			local mult = m.spacing_multipliers and m.spacing_multipliers[idx]
 			if mult == nil then
-				mult = score.figure_spacing_multiplier(slot.duration or slot.figure)
+				mult = M.figure_spacing_multiplier(slot.duration or slot.figure)
 			end
 			multipliers[#multipliers + 1] = mult
 		end
@@ -2042,18 +1992,18 @@ end
 --╭─────────────────────────────────────╮
 --│      Context Build and getsvg       │
 --╰─────────────────────────────────────╯
-function score.build_paint_context(w, h, material, clef_name_or_key, render_tree)
+function M.build_paint_context(w, h, material, clef_name_or_key, render_tree)
 	-- Ensure font
-	if not score.__font_singleton then
-		score.__font_singleton = FontLoaded:new()
+	if not M.__font_singleton then
+		M.__font_singleton = FontLoaded:new()
 	end
-	score.__font_singleton:ensure()
+	M.__font_singleton:ensure()
 
 	-- lazy way to copy the behavior of chord-seq of OM
-	if not render_tree then 
+	if not render_tree then
 		material.tree = {}
 		material.tree[1] = {}
-		material.tree[1][1] = {#material.chords, 4}
+		material.tree[1][1] = { #material.chords, 4 }
 		material.tree[1][2] = {}
 		for i = 1, #material.chords do
 			material.tree[1][2][i] = 1
@@ -2068,19 +2018,19 @@ function score.build_paint_context(w, h, material, clef_name_or_key, render_tree
 	-- Clef config and geometry
 	local clef_cfg = resolve_clef_config(clef_name_or_key)
 	local units_em = units_per_em_value()
-	local geom = compute_staff_geometry(w, h, clef_cfg.glyph, clef_cfg, score.DEFAULT_CLEF_LAYOUT, units_em)
+	local geom = compute_staff_geometry(w, h, clef_cfg.glyph, M.DEFAULT_CLEF_LAYOUT, units_em)
 	assert(geom, "Could not compute staff geometry")
 
 	-- Reference values for staff mapping (OM: bottom reference and anchor)
 	local bottom = clef_cfg.bottom_line
-	local bottom_value = score.diatonic_value(score.DIATONIC_STEPS, bottom.letter:upper(), bottom.octave)
+	local bottom_value = M.diatonic_value(M.DIATONIC_STEPS, bottom.letter:upper(), bottom.octave)
 
 	-- Context assembly
 	local ctx = {
 		width = geom.width,
 		height = geom.height,
 		glyph = {
-			bboxes = score.Bravura_Metadata and score.Bravura_Metadata.glyphBBoxes,
+			bboxes = M.Bravura_Metadata and M.Bravura_Metadata.glyphBBoxes,
 			units_per_space = geom.units_per_space,
 			scale = geom.glyph_scale,
 		},
@@ -2100,9 +2050,9 @@ function score.build_paint_context(w, h, material, clef_name_or_key, render_tree
 		},
 		clef = {
 			name = clef_cfg.glyph,
-			anchor_offset = score.DEFAULT_CLEF_LAYOUT.horizontal_offset_spaces,
-			spacing_after = score.DEFAULT_CLEF_LAYOUT.spacing_after,
-			vertical_offset_spaces = score.DEFAULT_CLEF_LAYOUT.vertical_offset_spaces,
+			anchor_offset = M.DEFAULT_CLEF_LAYOUT.horizontal_offset_spaces,
+			spacing_after = M.DEFAULT_CLEF_LAYOUT.spacing_after,
+			vertical_offset_spaces = M.DEFAULT_CLEF_LAYOUT.vertical_offset_spaces,
 			padding_spaces = geom.clef_padding_spaces,
 			config = clef_cfg,
 		},
@@ -2112,7 +2062,7 @@ function score.build_paint_context(w, h, material, clef_name_or_key, render_tree
 			accidental_gap = geom.staff_spacing * 0.2,
 		},
 		diatonic_reference = bottom_value,
-		steps_lookup = score.DIATONIC_STEPS,
+		steps_lookup = M.DIATONIC_STEPS,
 		measures = measures,
 		chords = chords,
 		measure_meta = build_measure_meta(measures),
@@ -2120,9 +2070,9 @@ function score.build_paint_context(w, h, material, clef_name_or_key, render_tree
 	}
 
 	-- Notehead extents
-	local note_bbox = score.Bravura_Metadata
-		and score.Bravura_Metadata.glyphBBoxes
-		and score.Bravura_Metadata.glyphBBoxes[ctx.note.glyph]
+	local note_bbox = M.Bravura_Metadata
+		and M.Bravura_Metadata.glyphBBoxes
+		and M.Bravura_Metadata.glyphBBoxes[ctx.note.glyph]
 	if note_bbox and note_bbox.bBoxNE and note_bbox.bBoxSW then
 		local sw_x = note_bbox.bBoxSW[1] or 0
 		local ne_x = note_bbox.bBoxNE[1] or 0
@@ -2155,7 +2105,7 @@ function score.build_paint_context(w, h, material, clef_name_or_key, render_tree
 end
 
 -- ─────────────────────────────────────
-function score.getsvg(ctx)
+function M.getsvg(ctx)
 	assert(ctx, "Paint context is nil, this is a fatal error and should not happen.")
 	local svg_chunks = {}
 	table.insert(
@@ -2202,4 +2152,4 @@ function score.getsvg(ctx)
 	return table.concat(svg_chunks, "\n")
 end
 
-return score
+return M
