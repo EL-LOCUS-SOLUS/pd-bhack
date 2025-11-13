@@ -1,4 +1,4 @@
-local f2m_llll = pd.Class:new():register("bhack.f2m")
+local f2m_llll = pd.Class:new():register("bhack.ftom")
 local bhack = require("bhack")
 
 --╭─────────────────────────────────────╮

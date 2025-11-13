@@ -1,4 +1,4 @@
-#N canvas 310 106 554 369 10;
+#N canvas 0 0 640 480 10;
 #X declare -lib else;
 #X msg 137 118 1 2 3;
 #X floatatom 116 210 5 0 0 0 - - - 0;
