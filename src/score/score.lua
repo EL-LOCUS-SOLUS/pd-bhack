@@ -42,7 +42,49 @@ M.ACCIDENTAL_GLYPHS = {
 	["-"] = "accidentalNarrowReversedFlat",
 	["b-"] = "accidentalNarrowReversedFlatAndFlat",
 	["#+"] = "accidentalThreeQuarterTonesSharpStein",
+
+	-- bequadro com setinhas para cima
+	["^"] = "accidentalNaturalOneArrowUp",
+	["^^"] = "accidentalNaturalTwoArrowsUp",
+	["^^^"] = "accidentalNaturalThreeArrowsUp",
+
+	-- bequadro com setinhas para baixo
+	["v"] = "accidentalNaturalOneArrowDown",
+	["vv"] = "accidentalNaturalTwoArrowsDown",
+	["vvv"] = "accidentalNaturalThreeArrowsDown",
+
+	-- bemol com setinhas para cima
+	["b^"] = "accidentalFlatOneArrowUp",
+	["b^^"] = "accidentalFlatTwoArrowsUp",
+	["b^^^"] = "accidentalFlatThreeArrowsUp",
+
+	-- sustenido com setinhas para cima
+	["#^"] = "accidentalSharpOneArrowUp",
+	["#^^"] = "accidentalSharpTwoArrowsUp",
+	["#^^^"] = "accidentalSharpThreeArrowsUp",
+
+	-- bemol com setinhas para baixo
+	["bv"] = "accidentalFlatOneArrowDown",
+	["bvv"] = "accidentalFlatTwoArrowsDown",
+	["bvvv"] = "accidentalFlatThreeArrowsDown",
+
+	-- sustenido com setinhas para baixo
+	["#v"] = "accidentalSharpOneArrowDown",
+	["#vv"] = "accidentalSharpTwoArrowsDown",
+	["#vvv"] = "accidentalSharpThreeArrowsDown",
 }
+
+-- TODO: Make the correction right (this is the lazy way)
+M.NATURAL_ACCIDENTAL_KEYS = {
+	--["^"] = true,
+	--["^^"] = true,
+	--["^^^"] = true,
+	["v"] = true,
+	["vv"] = true,
+	["vvv"] = true,
+}
+
+M.NATURAL_ACCIDENTAL_STEP_SHIFT = 2
 
 M.TIME_SIGNATURE_DIGITS = {
 	["0"] = "timeSig0",
@@ -596,23 +638,45 @@ local function compute_staff_geometry(w, h, clef_glyph, layout_defaults, units_p
 end
 
 -- ─────────────────────────────────────
-function M.parse_pitch(pitch, steps_lookup)
+function M.parse_pitch(pitch)
 	if type(pitch) ~= "string" then
 		pitch = tostring(pitch)
 	end
-	local letter, accidental, octave = pitch:match("^([A-Ga-g])([#%+b%-]-)(%d+)$")
-	if not letter or not octave then
-		return nil
+
+	-- 1. Verifica se o primeiro caractere é uma nota válida
+	local letter = pitch:sub(1, 1):upper()
+	if not letter:match("[A-G]") then
+		error("Invalid note letter in pitch: " .. tostring(pitch))
 	end
-	letter = letter:upper()
-	if steps_lookup and not steps_lookup[letter] then
-		return nil
+
+	-- Remove a letra inicial
+	local rest = pitch:sub(2)
+
+	-- 2. Captura o número final (oitava)
+	local octave = rest:match("(%d+)$")
+	if not octave then
+		error("Missing octave in pitch: " .. tostring(pitch))
 	end
-	if accidental == "" then
-		accidental = nil
+	octave = tonumber(octave)
+
+	-- Remove a oitava do final
+	local core = rest:sub(1, #rest - #tostring(octave))
+
+	-- 3. Determina o acidente (se existir)
+	local accidental = nil
+	if core ~= "" then
+		-- tenta casar exatamente com uma chave de M.ACCIDENTAL_GLYPHS
+		if M.ACCIDENTAL_GLYPHS[core] then
+			accidental = core
+		else
+			error("Invalid accidental: " .. tostring(core))
+		end
 	end
-	return letter, accidental, tonumber(octave)
+
+	return letter, accidental, octave
 end
+
+
 
 -- ─────────────────────────────────────
 local function resolve_clef_config(clef_name_or_key)
@@ -1278,24 +1342,19 @@ end
 
 -- ─────────────────────────────────────
 local function render_accidents(ctx, chord, current_x, layout_right)
-	local notes = (chord and chord.notes) or {}
+	local notes = chord.notes
 	if not notes or #notes == 0 then
 		return nil, current_x, { has_accidentals = false, lead_gap = 0 }
 	end
 
-	local staff = ctx.staff or {}
-	local note_cfg = ctx.note or {}
-	local ledger_cfg = ctx.ledger or {}
-	local staff_spacing = staff.spacing or 0
+	local staff = ctx.staff 
+	local note_cfg = ctx.note 
+	local ledger_cfg = ctx.ledger 
+	local staff_spacing = staff.spacing 
 	local ledger_extra_each_side = (staff_spacing * 0.8) * 0.5
 	local columns_gap = math.max(note_cfg.accidental_gap or 0, staff_spacing * 0.18)
-
-	if not ctx.accidentals then
-		ctx.accidentals = { map = M.ACCIDENTAL_GLYPHS }
-	elseif not ctx.accidentals.map then
-		ctx.accidentals.map = M.ACCIDENTAL_GLYPHS
-	end
-
+	ctx.accidentals = { map = M.ACCIDENTAL_GLYPHS }
+	
 	local chord_min_left = 0
 	for _, note in ipairs(notes) do
 		local offset = note.cluster_offset_px or 0
@@ -1368,6 +1427,14 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 						offset = center_y - desired
 					end
 				end
+			end
+		end
+
+		if accidental_key and M.NATURAL_ACCIDENTAL_KEYS[accidental_key] then
+			local step_shift = ctx.accidentals and ctx.accidentals.natural_step_shift or M.NATURAL_ACCIDENTAL_STEP_SHIFT or 0
+			if step_shift ~= 0 then
+				local spaces_shift = step_shift * 0.5
+				offset = offset - spaces_shift -- natural arrowheads sit two staff steps too high without this correction
 			end
 		end
 
@@ -1540,8 +1607,11 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 				width = note_cfg.left_extent or (staff_spacing * 0.6)
 			end
 			local new_anchor = current_x
+
+			-- gap to avoid conflict with previous column
 			if last then
-				new_anchor = last.anchor_x - (last.width or width) - columns_gap
+				local extra_gap = staff_spacing * 0.4
+				new_anchor = last.anchor_x - (last.width or width) - columns_gap - extra_gap
 			end
 			local abs_min_x = new_anchor + rel_min_x
 			local abs_max_x = new_anchor + rel_max_x
