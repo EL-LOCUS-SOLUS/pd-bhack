@@ -53,6 +53,17 @@ function bhack_utils.table_sum(t)
 end
 
 -- ─────────────────────────────────────
+function bhack_utils.round(n, decimals)
+    decimals = decimals or 0
+    local mult = 10 ^ decimals
+    if n >= 0 then
+        return math.floor(n * mult + 0.5) 
+    else
+        return math.ceil(n * mult - 0.5) 
+    end
+end
+
+-- ─────────────────────────────────────
 function bhack_utils.floor_pow2(n)
 	if n < 1 then
 		return 0

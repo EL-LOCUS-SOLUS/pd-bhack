@@ -1,3 +1,14 @@
+-- Pure Data pdlua object: bhack.voice
+-- Updated to work with the new score module API:
+--   local ctx = score.build_paint_context(w, h, material, self.CLEF_NAME, false, true)
+--   local svg = score.getsvg(ctx)
+--
+-- This object renders a voice from:
+-- - a rhythm tree (per-measure figures, e.g., { { {4,4}, {1,1,1,1} }, { {1,1} } })
+-- - chords with names and note lists OR a flat list of notes (arpejo)
+-- It maps each rhythmic slot to one chord (or one note wrapped as a chord),
+-- then overrides noteheads and durations according to the rhythm analysis.
+
 local b_voice = pd.Class:new():register("bhack.voice")
 local bhack = require("bhack")
 
@@ -8,18 +19,25 @@ function b_voice:initialize(_, args)
 	self.inlets = 2
 	self.outlets = 1
 	self.outlet_id = tostring(self._object):match("userdata: (0x[%x]+)")
-	self.NOTES = { "C4" }
+
+	-- Material
 	self.arpejo = true
+	self.NOTES = { "C4" }
 	self.CHORDS = {}
 	self.spacing_table = {}
+
+	-- Rhythm analysis (from score.build_render_tree)
+	self.rhythm_tree = nil -- analysis result
+	self.rhythm_tree_spec = {{{4, 4}, {1, 1, 1, 1}}} -- default input
 	self.rhythm_noteheads = {}
 	self.rhythm_spacing = {}
+	self.rhythm_figures = {}
 	self.rhythm_pitches = {}
 	self.rhythm_chords = {}
 	self.rhythm_material_kind = "notes"
-	self.rhythm_figures = {}
 	self.default_rhythm_pitch = "B4"
 
+	-- Clefs
 	self.CLEF_GLYPHS = {}
 	for key, cfg in pairs(bhack.score.CLEF_CONFIGS) do
 		self.CLEF_GLYPHS[key] = cfg.glyph
@@ -27,13 +45,7 @@ function b_voice:initialize(_, args)
 	self.current_clef_key = "g"
 	self.CLEF_NAME = bhack.score.CLEF_CONFIGS[self.current_clef_key].glyph
 
-	if not bhack.score.Bravura_Glyphnames then
-		bhack.score.readGlyphNames()
-	end
-	if not bhack.score.Bravura_Glyphs or not bhack.score.Bravura_Font then
-		bhack.score.readFont()
-	end
-
+	-- Geometry
 	local default_width = 400
 	local default_height = 80
 	if args ~= nil and #args > 0 then
@@ -45,13 +57,108 @@ function b_voice:initialize(_, args)
 		self.width = default_width
 		self.height = default_height
 	end
-
 	self:set_size(self.width, self.height)
 
+	-- Playback guide (optional)
 	self.playclock = pd.Clock:new():register(self, "playing_clock")
 	self.playbar_position = 20
+	self.playing = false
 
 	return true
+end
+
+--╭─────────────────────────────────────╮
+--│               Helpers               │
+--╰─────────────────────────────────────╯
+
+local function is_rhythm_tree(tbl)
+	-- Accept forms like:
+	-- { { {4,4}, {1,1,1,1} }, { {1,1} }, ... }
+	if type(tbl) ~= "table" or #tbl == 0 then
+		return false
+	end
+	local first = tbl[1]
+	if type(first) ~= "table" or #first == 0 then
+		return false
+	end
+	-- First can be { {4,4}, {...figs...} } or { {...figs...} }
+	local maybe_ts = first[1]
+	if
+		type(maybe_ts) == "table"
+		and #maybe_ts == 2
+		and type(maybe_ts[1]) == "number"
+		and type(maybe_ts[2]) == "number"
+	then
+		return true
+	end
+	for i = 1, #first do
+		if type(first[i]) ~= "number" then
+			return false
+		end
+	end
+	return true
+end
+
+local function chord_entry_to_named(entry)
+	-- Normalize a chord entry to { name=..., notes={...} }
+	-- Accepts:
+	-- 1) { "Cmaj7", { "C4","E4","G4","B4" } }
+	-- 2) { "C4","E4","G4" }
+	-- 3) { notes = {...}, name = "..." }
+	if type(entry) ~= "table" then
+		return { name = tostring(entry), notes = { tostring(entry) } }
+	end
+	if entry.name and entry.notes then
+		-- Already normalized
+		return { name = tostring(entry.name), notes = entry.notes }
+	end
+	if #entry >= 2 and type(entry[1]) == "string" and type(entry[2]) == "table" then
+		return { name = entry[1], notes = entry[2] }
+	end
+	local all_str = true
+	for _, n in ipairs(entry) do
+		if type(n) ~= "string" then
+			all_str = false
+			break
+		end
+	end
+	if all_str and #entry > 0 then
+		return { name = table.concat(entry, "-"), notes = entry }
+	end
+	-- Fallback
+	return { name = "?", notes = {} }
+end
+
+local function normalize_chords_list(raw)
+	local chords = {}
+	if type(raw) ~= "table" then
+		return chords
+	end
+
+	local flat_all_strings = true
+	for _, v in ipairs(raw) do
+		if type(v) ~= "string" then
+			flat_all_strings = false
+			break
+		end
+	end
+
+	if flat_all_strings then
+		return { { name = table.concat(raw, "-"), notes = raw } }
+	end
+
+	for _, entry in ipairs(raw) do
+		table.insert(chords, chord_entry_to_named(entry))
+	end
+	return chords
+end
+
+local function arpejo_to_chords(notes)
+	local chords = {}
+	for _, n in ipairs(notes or {}) do
+		table.insert(chords, { name = tostring(n), notes = { tostring(n) } })
+	end
+	return chords
 end
 
 --╭─────────────────────────────────────╮
@@ -82,53 +189,8 @@ function b_voice:in_1_clef(args)
 		self:error("Invalid clef: " .. tostring(raw))
 		return
 	end
-
 	self.current_clef_key = key
 	self.CLEF_NAME = clef
-	self:repaint()
-end
-
--- ─────────────────────────────────────
-function b_voice:build_measure(t)
-	if type(t) ~= "table" then
-		self:bhack_error("Invalid rhythm tree input")
-		return
-	end
-	local ok, result = pcall(bhack.score.build_render_tree, t)
-	if not ok then
-		self:bhack_error(result)
-		return
-	end
-
-	self.rhythm_tree = result
-	self.rhythm_noteheads = result.noteheads or {}
-	self.rhythm_spacing = result.spacing or {}
-	self.rhythm_figures = result.figures or {}
-	self.rhythm_pitches = {}
-	local symbol_count = #self.rhythm_noteheads
-	local chords_available = type(self.CHORDS) == "table" and #self.CHORDS >= symbol_count
-	local single_notes_available = type(self.NOTES) == "table" and #self.NOTES >= symbol_count
-
-	for i = 1, symbol_count do
-		if chords_available then
-			local chord = self.CHORDS[i]
-			if type(chord) == "table" then
-				self.rhythm_chords[i] = chord
-			else
-				self.rhythm_chords[i] = chord
-			end
-		else
-			self.rhythm_pitches[i] =
-				single_notes_available and tostring(self.NOTES[i]) or self.default_rhythm_pitch
-		end
-	end
-
-	if chords_available then
-		self.rhythm_material_kind = "chords"
-	else
-		self.rhythm_material_kind = "notes"
-	end
-
 	self:repaint()
 end
 
@@ -140,7 +202,13 @@ function b_voice:in_1_llll(atoms)
 		self:bhack_error("llll not found")
 		return
 	end
-	self:build_measure(llll:get_table())
+	local t = llll:get_table()
+	if not is_rhythm_tree(t) then
+		self:bhack_error("Input is not a valid rhythm tree")
+		return
+	end
+	self.rhythm_tree_spec = t
+	self:repaint()
 end
 
 -- ─────────────────────────────────────
@@ -151,7 +219,6 @@ function b_voice:in_2_llll(atoms)
 		self:bhack_error("llll not found")
 		return
 	end
-
 	if llll.depth == 1 then
 		error("llll must be of depth 2 for chords/arpeggios")
 	else
@@ -160,122 +227,23 @@ function b_voice:in_2_llll(atoms)
 	end
 end
 
--- ─────────────────────────────────────
-function b_voice:playing_clock()
-	self.playbar_position = self.playbar_position + 2
-	if self.playbar_position > self.width - 2 then
-		self.playbar_position = 20
-		self.playing = false
-	else
-		self.playclock:delay(30)
-		self:repaint(2)
-	end
-end
-
 --╭─────────────────────────────────────╮
 --│        Rendering Delegation         │
 --╰─────────────────────────────────────╯
 function b_voice:build_paint_context()
-    local w, h = self:get_size()
-    local notehead_count = self.rhythm_noteheads and #self.rhythm_noteheads or 0
+	local w, h = self:get_size()
+	local material = { clef = self.CLEF_NAME, tree = self.rhythm_tree_spec }
+	if type(self.CHORDS) == "table" and #self.CHORDS > 0 then
+		material.chords = normalize_chords_list(self.CHORDS)
+	elseif type(self.NOTES) == "table" and #self.NOTES > 0 then
+		material.chords = arpejo_to_chords(self.NOTES)
+	else
+		material.chords =
+			{ { name = self.default_rhythm_pitch or "B4", notes = { self.default_rhythm_pitch or "B4" } } }
+	end
 
-	if notehead_count > 0 then
-		local material = {}
-		local chords_table = type(self.CHORDS) == "table" and self.CHORDS or nil
-		local chord_count = chords_table and #chords_table or 0
-		local notes_table = type(self.NOTES) == "table" and self.NOTES or nil
-
-		for i = 1, notehead_count do
-			local chord_source = nil
-			if chord_count > 0 then
-				local idx = math.min(i, chord_count)
-				chord_source = chords_table[idx]
-			end
-
-			local chord = {}
-
-			if type(chord_source) == "table" then
-				for _, pitch in ipairs(chord_source) do
-					chord[#chord + 1] = tostring(pitch)
-				end
-			elseif chord_source ~= nil then
-				chord[1] = tostring(chord_source)
-			else
-				chord[1] = self.default_rhythm_pitch 
-			end
-
-			if #chord == 0 then
-				chord[1] = self.default_rhythm_pitch 
-			end
-
-			material[i] = chord
-		end
-
-        local ctx = bhack.score.build_paint_context(w, h, material, self.CLEF_NAME, false, true)
-        if not ctx then
-            return nil
-        end
-
-		local figures = self.rhythm_figures or {}
-
-		if ctx.chords then
-            for i, chord in ipairs(ctx.chords) do
-                local desired = self.rhythm_noteheads[i]
-                if desired then
-                    for _, note in ipairs(chord) do
-                        note.notehead = desired
-                    end
-                end
-				local figure_value = figures[i]
-				if figure_value ~= nil then
-					for _, note in ipairs(chord) do
-						note.figure = figure_value
-						note.duration = figure_value
-						note.value = figure_value
-					end
-				end
-            end
-        elseif ctx.notes then
-            for i, note in ipairs(ctx.notes) do
-                local desired = self.rhythm_noteheads[i]
-                if desired then
-                    note.notehead = desired
-                end
-				local figure_value = figures[i]
-				if figure_value ~= nil then
-					note.figure = figure_value
-					note.duration = figure_value
-					note.value = figure_value
-				end
-            end
-        end
-
-        ctx.spacing_table = self.rhythm_spacing or {}
-        if self.rhythm_tree then
-            ctx.measure_meta = self.rhythm_tree.measure_meta
-            ctx.time_signature_measures = self.rhythm_tree.measures
-        end
-        ctx.render_mode = "rhythm"
-        return ctx
-    end
-
-    -- Fallback when no rhythm is available yet.
-    local fallback_material = {}
-    local arpejo_mode = true
-    if type(self.CHORDS) == "table" and #self.CHORDS > 0 then
-        fallback_material = self.CHORDS
-        arpejo_mode = false
-    elseif type(self.NOTES) == "table" and #self.NOTES > 0 then
-        fallback_material = self.NOTES
-    else
-        fallback_material = { self.default_rhythm_pitch or "B4" }
-    end
-
-    local ctx = bhack.score.build_paint_context(w, h, fallback_material, self.CLEF_NAME, arpejo_mode)
-    if ctx then
-        ctx.spacing_table = self.spacing_table
-    end
-    return ctx
+	local ctx = bhack.score.build_paint_context(w, h, material, self.CLEF_NAME, false, true)
+	return ctx
 end
 
 -- ─────────────────────────────────────
@@ -290,16 +258,19 @@ function b_voice:paint(g)
 	if svg then
 		self.svg = svg
 	end
+
 	g:set_color(247, 247, 247)
 	g:fill_all()
-	g:draw_svg(self.svg, 0, 0)
+	if self.svg then
+		g:draw_svg(self.svg, 0, 0)
+	end
 end
 
 -- ─────────────────────────────────────
 function b_voice:in_1_reload()
 	package.loaded.bhack = nil
 	bhack = nil
-	for k, v in pairs(package.loaded) do
+	for k, _ in pairs(package.loaded) do
 		if k == "score/score" or k == "score/utils" then
 			package.loaded[k] = nil
 		end
