@@ -38,11 +38,11 @@
 #X text 212 40 Regra para cluster;
 #X msg 52 60 list [C4 D4 E4] [C4 F4 A4];
 #X msg 17 8 list [C4 D-4 Gb5 Db5 B4 G#4] [C4 E-4 Gb5 Db5 B4 G#4];
-#X msg 58 82 list [C4 Db4 E4] [C4 F4 A4] [G4 Ab4 B4];
 #X msg 118 283 size 400 120;
 #X text 177 124 single notes;
 #X text 536 55 Plot chords.;
 #X obj 118 254 loadbang;
+#X msg 58 82 list [C4 Db4 E4] [C4 F4 A4] [G4 Ab4 B4];
 #X connect 3 0 2 0;
 #X connect 4 0 3 0;
 #X connect 5 0 2 0;
@@ -51,5 +51,5 @@
 #X connect 8 0 3 0;
 #X connect 11 0 3 0;
 #X connect 12 0 3 0;
-#X connect 13 0 3 0;
-#X connect 17 0 14 0;
+#X connect 16 0 13 0;
+#X connect 17 0 3 0;

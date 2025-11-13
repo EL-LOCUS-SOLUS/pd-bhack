@@ -242,7 +242,7 @@ function b_voice:build_paint_context()
 			{ { name = self.default_rhythm_pitch or "B4", notes = { self.default_rhythm_pitch or "B4" } } }
 	end
 
-	local ctx = bhack.score.build_paint_context(w, h, material, self.CLEF_NAME, false, true)
+	local ctx = bhack.score.build_paint_context(w, h, material, self.CLEF_NAME, true)
 	return ctx
 end
 

@@ -6,7 +6,7 @@ local slaxml = require("score/slaxml")
 local json = require("score/json")
 local utils = require("score/utils")
 
-function printTable(t, depth, maxDepth)
+local function printTable(t, depth, maxDepth)
 	depth = depth or 0
 	maxDepth = maxDepth or 5
 	if depth > maxDepth then
@@ -134,7 +134,7 @@ function FontLoaded:new()
 	return o
 end
 
-function FontLoaded:readGlyphNames()
+function FontLoaded.readGlyphNames()
 	if score.Bravura_Glyphnames and score.Bravura_Metadata then
 		return
 	end
@@ -151,7 +151,7 @@ function FontLoaded:readGlyphNames()
 	score.Bravura_Metadata = json.decode(glyphJson)
 end
 
-function FontLoaded:readFont()
+function FontLoaded.readFont()
 	if score.Bravura_Glyphs and score.Bravura_Font then
 		return
 	end
@@ -225,18 +225,13 @@ end
 
 score.FontLoaded = FontLoaded
 
--- Note class: pitch like "C#4", optional notehead override
+--╭─────────────────────────────────────╮
+--│                Note                 │
+--╰─────────────────────────────────────╯
 local Note = {}
 Note.__index = Note
 
 function Note:new(pitch, config)
-	local spec = nil
-	if type(pitch) == "table" and config == nil then
-		spec = pitch
-		pitch = spec.pitch or spec.raw or spec.note or spec[1]
-		config = spec
-	end
-
 	assert(pitch, "Note pitch is required")
 
 	local obj = setmetatable({}, self)
@@ -280,7 +275,9 @@ end
 
 score.note = Note
 
--- Chord class: name string and notes { "C4","E4",... } or Note objects
+--╭─────────────────────────────────────╮
+--│                Chord                │
+--╰─────────────────────────────────────╯
 local Chord = {}
 Chord.__index = Chord
 
@@ -322,8 +319,7 @@ function Chord:new(name, notes, slot_info)
 	return obj
 end
 
-score.chord = Chord
-
+-- ─────────────────────────────────────
 local function chord_to_blueprint(chord)
 	if not chord then
 		return nil
@@ -341,6 +337,7 @@ local function chord_to_blueprint(chord)
 	return blueprint
 end
 
+-- ─────────────────────────────────────
 local function instantiate_chord_blueprint(blueprint, slot_info)
 	if not blueprint then
 		return nil
@@ -361,7 +358,11 @@ local function instantiate_chord_blueprint(blueprint, slot_info)
 	return Chord:new(blueprint.name, note_specs, slot_info)
 end
 
--- Measure class: carries time signature and rhythm "tree" (flat list of figures)
+score.chord = Chord
+
+--╭─────────────────────────────────────╮
+--│               Measure               │
+--╰─────────────────────────────────────╯
 local Measure = {}
 Measure.__index = Measure
 
@@ -375,6 +376,7 @@ function score.figure_to_notehead(duration_whole)
 	end
 end
 
+-- ─────────────────────────────────────
 function score.figure_spacing_multiplier(duration_whole)
 	local value = tonumber(duration_whole)
 	if not value or value <= 0 then
@@ -404,6 +406,7 @@ function score.figure_spacing_multiplier(duration_whole)
 	return (shaped < 0) and 0 or shaped
 end
 
+-- ─────────────────────────────────────
 function Measure:new(time_sig, tree, number)
 	local treedepth = utils.table_depth(tree)
 	if treedepth > 1 then
@@ -420,6 +423,7 @@ function Measure:new(time_sig, tree, number)
 	return obj
 end
 
+-- ─────────────────────────────────────
 function Measure:build()
 	local t_amount = self.time_sig[1]
 	local t_fig = self.time_sig[2]
@@ -515,7 +519,6 @@ function Voice:new(material)
 			local chord_name = spec.name or ""
 			local notes = spec.notes or {}
 			chord_obj = Chord:new(chord_name, notes, chord_slot_data)
-			last_blueprint = chord_to_blueprint(chord_obj)
 		else
 			chord_obj = instantiate_chord_blueprint(last_blueprint, chord_slot_data)
 				or Chord:new("", {}, chord_slot_data)
@@ -946,12 +949,12 @@ end
 
 -- ─────────────────────────────────────
 local function render_time_signature(ctx, origin_x, metrics, meta)
-	if not ctx or not metrics then
+	if not ctx or not metrics or not ctx.render_tree then
 		return nil, 0, origin_x or 0
 	end
 
 	local lines = {}
-	local staff = ctx.staff or {}
+	-- local staff = ctx.staff or {}
 	local start_x = origin_x + (metrics.left_padding or 0)
 	local max_width = metrics.max_width or 0
 	local consumed = metrics.total_width or 0
@@ -1003,7 +1006,7 @@ function score.staff_y_for_steps(ctx, steps)
 end
 
 -- ─────────────────────────────────────
-function score.ledger_positions(ctx, steps)
+function score.ledger_positions(_, steps)
 	local positions = {}
 	if steps <= -2 then
 		local step = -2
@@ -1150,7 +1153,7 @@ local function compute_chord_stem_direction(clef_key, chord)
 	return (average >= threshold_value) and "down" or "up"
 end
 
--- Cache chord stem metadata so every note shares direction/side.
+-- ─────────────────────────────────────
 local function ensure_chord_stem_direction(clef_key, chord)
 	if not chord then
 		return stem_direction(clef_key, nil) or "up"
@@ -1167,30 +1170,12 @@ local function ensure_chord_stem_direction(clef_key, chord)
 	return direction
 end
 
--- Determine how many flags a duration requires (quarter and longer => 0).
-local function flag_count_for_duration(duration)
-	local value = tonumber(duration)
-	if not value or value <= 0 then
-		return 0
-	end
-	local flags = 0
-	local threshold = 0.25 -- quarter note baseline, shorter durations add flags
-	while value < threshold and flags < 8 do
-		flags = flags + 1
-		threshold = threshold * 0.5
-	end
-	return flags
-end
-
-local function resolve_flag_glyph(note, chord, direction)
-	local count = note.figure
-	local dir_key = (direction == "down") and "down" or "up"
-	local mapping = FLAG_GLYPH_MAP[dir_key]
+-- ─────────────────────────────────────
+local function resolve_flag_glyph(note, _, direction)
 	if note.figure < 8 then
 		return nil
 	end
 
-	--
 	local figure = utils.floor_pow2(note.figure)
 	local glyph = "flag" .. tostring(math.tointeger(figure))
 	if figure == 32 then
@@ -1204,12 +1189,12 @@ local function resolve_flag_glyph(note, chord, direction)
 	else
 		glyph = glyph .. "Down"
 	end
-	--pd.post("Resolved flag glyph: " .. glyph)
 	return glyph
 end
 
+-- ─────────────────────────────────────
 local function render_flag(ctx, note, stem_metrics, direction)
-	if not note or not stem_metrics then
+	if not note or not stem_metrics or not ctx.render_tree then
 		return nil
 	end
 	local glyph_name = resolve_flag_glyph(note, note and note.chord, direction)
@@ -1223,13 +1208,11 @@ local function render_flag(ctx, note, stem_metrics, direction)
 	local align_y
 
 	if direction == "down" then
-		-- Down stems anchor at their lower tip; glyph's left side should meet the stem.
 		flag_anchor_x = (note.stem_anchor_x or note.render_x or 0) + (stem_metrics.max_x or 0)
 		flag_anchor_y = stem_metrics.bottom_y or note.render_y or 0
 		align_x = "left"
 		align_y = "bottom"
 	else
-		-- Up stems anchor at their upper tip; align the glyph's left edge with the stem's right side.
 		flag_anchor_x = (note.stem_anchor_x or note.render_x or 0)
 		if stem_metrics.max_x then
 			flag_anchor_x = flag_anchor_x + stem_metrics.max_x
@@ -1254,7 +1237,7 @@ end
 
 -- ─────────────────────────────────────
 local function render_stem(ctx, note, head_metrics, direction_override)
-	if not should_render_stem(note) then
+	if not should_render_stem(note) or not ctx.render_tree then
 		return nil
 	end
 	local clef_key = (ctx.clef and ctx.clef.config and ctx.clef.config.key) or "g"
@@ -1472,7 +1455,7 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 	if #chord_accidentals > 0 then
 		local accidental_clearance = math.max((note_cfg.accidental_gap or 0) * 0.5, staff_spacing * 0.1)
 		local head_half_width = note_cfg.left_extent or (staff_spacing * 0.5)
-		for _, acc in ipairs(chord_accidentals) do
+		for _ = 1, #chord_accidentals do
 			local required_note_x = current_x + accidental_clearance + head_half_width
 			local required_lead_gap = required_note_x - current_x - chord_min_left
 			if required_lead_gap > lead_gap then
@@ -1851,7 +1834,7 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 					-- ledgers
 					local ledgers = score.ledger_positions(ctx, note.steps)
 					if #ledgers > 0 then
-						local head_width_px = (m and m.width) or (staff_spacing * 1.0)
+						head_width_px = (m and m.width) or (staff_spacing * 1.0)
 						local extra_each_side = (staff_spacing * 0.8) * 0.5
 						local left = center_x - (head_width_px * 0.5) - ledger_cfg.extension - extra_each_side
 						local right = center_x + (head_width_px * 0.5) + ledger_cfg.extension + extra_each_side
@@ -1922,11 +1905,24 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 
 		-- advance
 		local adv = spacing_sequence[index] or note_cfg.spacing
-		current_x = chord_x + adv
+		current_x = chord_x + adv 
+
+		-- without tree, try to adapt to the current size of the canvas
+		if not ctx.render_tree then
+			local chords_len = #chords
+			local staff_width = ctx.staff.width
+			if chords_len > 0 and staff_width and staff_width > 0 then
+				local estimated_x = note_start_x + (staff_width * (index / chords_len))
+				if estimated_x > current_x then
+					current_x = estimated_x
+				end
+			end
+			
+		end
 
 		-- barline at measure end
 		local meta = end_lookup[index]
-		if meta then
+		if meta and ctx.render_tree then
 			local min_gap = (staff.line_thickness or (staff_spacing * 0.12)) * 0.5 + (staff_spacing * 0.02)
 			local latest = current_x - min_gap
 			local earliest = (chord_rightmost or (current_x - adv)) + min_gap
@@ -2046,12 +2042,23 @@ end
 --╭─────────────────────────────────────╮
 --│      Context Build and getsvg       │
 --╰─────────────────────────────────────╯
-function score.build_paint_context(w, h, material, clef_name_or_key, ischord, render_tree)
+function score.build_paint_context(w, h, material, clef_name_or_key, render_tree)
 	-- Ensure font
 	if not score.__font_singleton then
 		score.__font_singleton = FontLoaded:new()
 	end
 	score.__font_singleton:ensure()
+
+	-- lazy way to copy the behavior of chord-seq of OM
+	if not render_tree then 
+		material.tree = {}
+		material.tree[1] = {}
+		material.tree[1][1] = {#material.chords, 4}
+		material.tree[1][2] = {}
+		for i = 1, #material.chords do
+			material.tree[1][2][i] = 1
+		end
+	end
 
 	-- Build voice, measures, chords
 	local voice = Voice:new(material)
@@ -2064,7 +2071,7 @@ function score.build_paint_context(w, h, material, clef_name_or_key, ischord, re
 	local geom = compute_staff_geometry(w, h, clef_cfg.glyph, clef_cfg, score.DEFAULT_CLEF_LAYOUT, units_em)
 	assert(geom, "Could not compute staff geometry")
 
-	-- Reference values for staff mapping (Lisp: bottom reference and anchor)
+	-- Reference values for staff mapping (OM: bottom reference and anchor)
 	local bottom = clef_cfg.bottom_line
 	local bottom_value = score.diatonic_value(score.DIATONIC_STEPS, bottom.letter:upper(), bottom.octave)
 
