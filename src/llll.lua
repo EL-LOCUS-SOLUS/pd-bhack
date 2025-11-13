@@ -1,8 +1,8 @@
-local llll = {}
-llll.__index = llll
+local M = {}
+M.__index = M
 
 -- ─────────────────────────────────────
-function llll:new(pdobj, atoms)
+function M:new(pdobj, atoms)
 	local obj = setmetatable({}, self)
 	obj.atoms = atoms or {}
 	obj.table = self:table_from_atoms(atoms)
@@ -13,7 +13,7 @@ function llll:new(pdobj, atoms)
 end
 
 -- ─────────────────────────────────────
-function llll:new_fromtable(pdobj, t)
+function M:new_fromtable(pdobj, t)
 	local obj = setmetatable({}, self)
 	if type(t) ~= "table" then
 		obj.table = t
@@ -27,7 +27,7 @@ function llll:new_fromtable(pdobj, t)
 end
 
 -- ─────────────────────────────────────
-function llll:new_fromid(pdobj, id)
+function M:new_fromid(pdobj, id)
 	local obj = setmetatable({}, self)
 	obj.atoms = {}
 	obj.table = _G.bhack_outlets[id]
@@ -37,7 +37,7 @@ function llll:new_fromid(pdobj, id)
 end
 
 -- ─────────────────────────────────────
-function llll:output(i)
+function M:output(i)
 	local str = "<" .. self.pdobj._llll_id .. ">"
 	_G.bhack_outlets[str] = self
 	pd._outlet(self.pdobj._object, i, "llll", { str })
@@ -45,7 +45,7 @@ function llll:output(i)
 end
 
 -- ─────────────────────────────────────
-function llll:get_depth(tbl)
+function M:get_depth(tbl)
 	if type(tbl) ~= "table" then
 		return 0
 	end
@@ -60,7 +60,7 @@ function llll:get_depth(tbl)
 end
 
 -- ─────────────────────────────────────
-function llll:to_table(str)
+function M:to_table(str)
 	local list_b = str:match("^%s*(%b[])%s*$")
 	local result
 	if list_b then
@@ -75,7 +75,7 @@ function llll:to_table(str)
 end
 
 -- ─────────────────────────────────────
-function llll:table_from_atoms(atoms)
+function M:table_from_atoms(atoms)
 	local parts = {}
 	for _, v in ipairs(atoms) do
 		table.insert(parts, tostring(v))
@@ -101,7 +101,7 @@ function llll:table_from_atoms(atoms)
 end
 
 -- ─────────────────────────────────────
-function llll:print()
+function M:print()
 	if type(self.table) ~= "table" then
 		pd.post(self.table)
 		return
@@ -119,7 +119,7 @@ function llll:print()
 end
 
 -- ─────────────────────────────────────
-function llll:to_string(tbl)
+function M:to_string(tbl)
 	if type(tbl) ~= "table" then
 		return tostring(tbl)
 	end
@@ -137,7 +137,7 @@ function llll:to_string(tbl)
 end
 
 -- ─────────────────────────────────────
-function llll:check_brackets(str)
+function M:check_brackets(str)
 	local thereis_b = str:find("%[") or str:find("%]")
 	local thereis_p = str:find("%(") or str:find("%)")
 
@@ -155,7 +155,7 @@ function llll:check_brackets(str)
 end
 
 -- ─────────────────────────────────────
-function llll:parse_list(str, i)
+function M:parse_list(str, i)
 	local result = {}
 	local token = ""
 	i = i + 1
@@ -193,8 +193,8 @@ function llll:parse_list(str, i)
 end
 
 -- ─────────────────────────────────────
-function llll:get_table()
+function M:get_table()
 	return self.table
 end
 
-return llll
+return M
