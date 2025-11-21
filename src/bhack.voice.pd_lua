@@ -1,16 +1,8 @@
--- Pure Data pdlua object: bhack.voice
--- Updated to work with the new score module API:
---   local ctx = score.build_paint_context(w, h, material, self.CLEF_NAME, false, true)
---   local svg = score.getsvg(ctx)
---
--- This object renders a voice from:
--- - a rhythm tree (per-measure figures, e.g., { { {4,4}, {1,1,1,1} }, { {1,1} } })
--- - chords with names and note lists OR a flat list of notes (arpejo)
--- It maps each rhythmic slot to one chord (or one note wrapped as a chord),
--- then overrides noteheads and durations according to the rhythm analysis.
-
 local b_voice = pd.Class:new():register("bhack.voice")
 local bhack = require("bhack")
+
+local m2n = require("bhack").utils.m2n
+local n2m = require("bhack").utils.n2m
 
 --╭─────────────────────────────────────╮
 --│           Object Creator            │
@@ -18,62 +10,103 @@ local bhack = require("bhack")
 function b_voice:initialize(_, args)
 	self.inlets = 2
 	self.outlets = 1
-	self.outlet_id = tostring(self._object):match("userdata: (0x[%x]+)")
 
 	-- Material
-	self.arpejo = true
-	self.NOTES = { "C4" }
-	self.CHORDS = {}
-	self.spacing_table = {}
-
-	-- Rhythm analysis (from score.build_render_tree)
-	self.rhythm_tree = nil -- analysis result
-	self.rhythm_tree_spec = {{{4, 4}, {1, 1, 1, 1}}} -- default input
-	self.rhythm_noteheads = {}
-	self.rhythm_spacing = {}
-	self.rhythm_figures = {}
-	self.rhythm_pitches = {}
-	self.rhythm_chords = {}
-	self.rhythm_material_kind = "notes"
-	self.default_rhythm_pitch = "B4"
-
-	-- Clefs
-	self.CLEF_GLYPHS = {}
-	for key, cfg in pairs(bhack.score.CLEF_CONFIGS) do
-		self.CLEF_GLYPHS[key] = cfg.glyph
-	end
+	self.CHORDS = { { name = "C4", notes = { "C4" } } }
+	self.rhythm_tree_spec = { { { 4, 4 }, { 1, 1, 1, 1 } } } -- default input
 	self.current_clef_key = "g"
-	self.CLEF_NAME = bhack.score.CLEF_CONFIGS[self.current_clef_key].glyph
 
 	-- Geometry
 	local default_width = 400
 	local default_height = 80
-	if args ~= nil and #args > 0 then
-		local maybe_width = tonumber(args[1])
-		local maybe_height = tonumber(args[2])
-		self.width = (maybe_width and maybe_width > 0) and maybe_width or default_width
-		self.height = (maybe_height and maybe_height > 0) and maybe_height or default_height
-	else
-		self.width = default_width
-		self.height = default_height
-	end
+	self.width = args and tonumber(args[1]) or default_width
+	self.height = args and tonumber(args[2]) or default_height
 	self:set_size(self.width, self.height)
 
-	-- Playback guide (optional)
+	-- Playback
 	self.playclock = pd.Clock:new():register(self, "playing_clock")
-	self.playbar_position = 20
+	self.clear_after_play = pd.Clock:new():register(self, "clear_playbar")
+	self.playbar_position = 0
+	self.last_valid_position = 0
 	self.playing = false
+	self.bpm = 120
+	self.current_measure = 1
+	self.entry = nil
+	self.noteoff = {}
+
+	-- Initialize Score
+	self.Score = bhack.score.Score:new(self.width, self.height)
+	self.Score:set_material({
+		clef = self.current_clef_key,
+		render_tree = true,
+		tree = self.rhythm_tree_spec,
+		chords = self.CHORDS,
+		bpm = self.bpm,
+	})
 
 	return true
+end
+
+-- ─────────────────────────────────────
+function b_voice:clear_playbar()
+	self.is_playing = false
+	self.playbar_position = 0
+	local onsets, _ = self.Score:get_onsets()
+	local first_entry = onsets[0]
+	self.last_valid_position = first_entry and first_entry.left or 0
+	self.last_draw_position = nil
+	self:repaint(2)
+end
+
+-- ─────────────────────────────────────
+function b_voice:playing_clock()
+	self.playbar_position = self.playbar_position + 1
+	if self.playbar_position > self.last_onset then
+		self.clear_after_play:delay(500)
+		self:repaint(2)
+		self.playbar_position = 0
+		return
+	end
+
+	-- Calculate the actual draw position
+	self.onsets, self.last_onset = self.Score:get_onsets()
+	local entry = self.onsets[self.playbar_position]
+	local pos = (entry and entry.left) or self.last_valid_position or 0
+	local is_rest = entry and entry.is_rest
+
+	-- Only repaint if position changed
+	if pos ~= self.last_draw_position then
+		self.last_draw_position = pos
+		self.last_valid_position = pos
+		self.last_was_rest = is_rest
+		self.entry = entry
+
+		if #self.noteoff > 1 then
+			for i = 1, #self.noteoff do
+				self:outlet(1, "list", { self.noteoff[i], 0 })
+			end
+			self.noteoff = {}
+		end
+
+		if self.entry ~= nil and not is_rest then
+			for i = 1, #self.entry.chord.notes do
+				local pitchname = self.entry.chord.notes[i].raw
+				local midi = n2m(pitchname)
+				table.insert(self.noteoff, midi)
+				self:outlet(1, "list", { midi, 60 })
+			end
+		end
+
+		self:repaint(2)
+	end
+
+	self.playclock:delay(1)
 end
 
 --╭─────────────────────────────────────╮
 --│               Helpers               │
 --╰─────────────────────────────────────╯
-
 local function is_rhythm_tree(tbl)
-	-- Accept forms like:
-	-- { { {4,4}, {1,1,1,1} }, { {1,1} }, ... }
 	if type(tbl) ~= "table" or #tbl == 0 then
 		return false
 	end
@@ -96,15 +129,12 @@ local function is_rhythm_tree(tbl)
 			return false
 		end
 	end
+
 	return true
 end
 
+-- ─────────────────────────────────────
 local function chord_entry_to_named(entry)
-	-- Normalize a chord entry to { name=..., notes={...} }
-	-- Accepts:
-	-- 1) { "Cmaj7", { "C4","E4","G4","B4" } }
-	-- 2) { "C4","E4","G4" }
-	-- 3) { notes = {...}, name = "..." }
 	if type(entry) ~= "table" then
 		return { name = tostring(entry), notes = { tostring(entry) } }
 	end
@@ -129,6 +159,7 @@ local function chord_entry_to_named(entry)
 	return { name = "?", notes = {} }
 end
 
+-- ─────────────────────────────────────
 local function normalize_chords_list(raw)
 	local chords = {}
 	if type(raw) ~= "table" then
@@ -149,14 +180,6 @@ local function normalize_chords_list(raw)
 
 	for _, entry in ipairs(raw) do
 		table.insert(chords, chord_entry_to_named(entry))
-	end
-	return chords
-end
-
-local function arpejo_to_chords(notes)
-	local chords = {}
-	for _, n in ipairs(notes or {}) do
-		table.insert(chords, { name = tostring(n), notes = { tostring(n) } })
 	end
 	return chords
 end
@@ -184,13 +207,37 @@ end
 function b_voice:in_1_clef(args)
 	local raw = args and args[1]
 	local key = raw and tostring(raw):lower() or ""
-	local clef = self.CLEF_GLYPHS[key]
+	local clef = bhack.score.CLEF_CONFIGS[raw]
+
 	if clef == nil then
 		self:error("Invalid clef: " .. tostring(raw))
 		return
 	end
+
 	self.current_clef_key = key
 	self.CLEF_NAME = clef
+
+	self.Score:set_material({
+		clef = self.current_clef_key,
+		render_tree = true,
+		tree = self.rhythm_tree_spec,
+		chords = normalize_chords_list(self.CHORDS),
+		bpm = self.bpm,
+	})
+
+	self:repaint()
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_1_bpm(args)
+	self.bpm = args and args[1]
+	self.Score:set_material({
+		clef = self.current_clef_key,
+		render_tree = true,
+		tree = self.rhythm_tree_spec,
+		chords = normalize_chords_list(self.CHORDS),
+		bpm = self.bpm,
+	})
 	self:repaint()
 end
 
@@ -207,8 +254,40 @@ function b_voice:in_1_llll(atoms)
 		self:bhack_error("Input is not a valid rhythm tree")
 		return
 	end
+
 	self.rhythm_tree_spec = t
+	self.Score:set_material({
+		clef = self.current_clef_key,
+		render_tree = true,
+		tree = self.rhythm_tree_spec,
+		chords = normalize_chords_list(self.CHORDS),
+		bpm = self.bpm,
+	})
+
 	self:repaint()
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_1_play()
+	self.playclock:delay(1)
+	self.is_playing = true
+	self.playbar_position = 0
+
+	self.onsets, self.last_onset = self.Score:get_onsets()
+	local first_entry = self.onsets[0]
+	self.last_valid_position = first_entry and first_entry.left or 0
+	self.last_draw_position = nil
+
+	if first_entry ~= nil and not first_entry.is_rest then
+		for i = 1, #first_entry.chord.notes do
+			local pitchname = first_entry.chord.notes[i].raw
+			local midi = n2m(pitchname)
+			table.insert(self.noteoff, midi)
+			self:outlet(1, "list", { midi, 60 })
+		end
+	end
+
+	self:repaint(2)
 end
 
 -- ─────────────────────────────────────
@@ -222,47 +301,85 @@ function b_voice:in_2_llll(atoms)
 	if llll.depth == 1 then
 		error("llll must be of depth 2 for chords/arpeggios")
 	else
-		self.arpejo = false
 		self.CHORDS = llll:get_table()
 	end
 end
 
---╭─────────────────────────────────────╮
---│        Rendering Delegation         │
---╰─────────────────────────────────────╯
-function b_voice:build_paint_context()
-	local w, h = self:get_size()
-	local material = { clef = self.CLEF_NAME, tree = self.rhythm_tree_spec }
-	if type(self.CHORDS) == "table" and #self.CHORDS > 0 then
-		material.chords = normalize_chords_list(self.CHORDS)
-	elseif type(self.NOTES) == "table" and #self.NOTES > 0 then
-		material.chords = arpejo_to_chords(self.NOTES)
-	else
-		material.chords =
-			{ { name = self.default_rhythm_pitch or "B4", notes = { self.default_rhythm_pitch or "B4" } } }
+-- ─────────────────────────────────────
+function b_voice:in_1_save(atoms)
+	local path = atoms[1]
+	if type(path) ~= "string" then
+		error("Invalid path for saving score")
 	end
 
-	local ctx = bhack.score.build_paint_context(w, h, material, self.CLEF_NAME, true)
-	return ctx
+	-- save the self.svg to file
+	if self.svg == nil then
+		error("SVG is nil")
+	end
+	local file, err = io.open(path, "w")
+	if not file then
+		error("Error opening file for writing: " .. tostring(err))
+	end
+	file:write(self.svg)
+	file:close()
 end
 
 -- ─────────────────────────────────────
 function b_voice:paint(g)
-	local ctx = self:build_paint_context()
-	if ctx == nil then
-		self:error("Error building paint context")
-		return
+	self.svg = self.Score:getsvg(2, 2)
+	if self.svg == nil then
+		error("Error generating SVG")
 	end
 
-	local svg = bhack.score.getsvg(ctx)
-	if svg then
-		self.svg = svg
+	self.onsets, self.last_onset = self.Score:get_onsets()
+
+	local errors = self.Score:get_errors()
+	if #errors > 0 then
+		for _, err in ipairs(errors) do
+			self:error(tostring(err))
+		end
 	end
 
 	g:set_color(247, 247, 247)
 	g:fill_all()
-	if self.svg then
-		g:draw_svg(self.svg, 0, 0)
+	g:draw_svg(self.svg, 0, 0)
+end
+
+-- ─────────────────────────────────────
+function b_voice:paint_layer_2(g)
+	local padding = 4
+
+	if self.is_playing then
+		local triangle_size = 5
+		g:set_color(0, 200, 0)
+		local points = {
+			{ x = padding, y = padding },
+			{ x = padding, y = padding + triangle_size },
+			{ x = padding + triangle_size, y = padding + (triangle_size / 2) },
+		}
+
+		local p = Path(points[1].x, points[1].y)
+		for i = 2, #points do
+			p:line_to(points[i].x, points[i].y)
+		end
+		p:close()
+		g:fill_path(p)
+
+		-- barra que indica a posição atual
+		g:set_color(180, 75, 75)
+		local pos = self.last_valid_position
+		g:fill_rect(pos - 1, padding, 1, self.height - (padding * 2))
+
+		if pos > self.width * 0.8 then
+			-- TODO:
+			pd.post("Need update the measures")
+		end
+	else
+		local rect_width = 1
+		local rect_height = 5
+		g:set_color(0, 0, 200)
+		g:fill_rect(padding, padding, rect_width, rect_height)
+		g:fill_rect(padding + rect_width + 2, padding, rect_width, rect_height)
 	end
 end
 

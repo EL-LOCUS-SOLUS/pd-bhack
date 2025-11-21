@@ -1,4 +1,4 @@
-#N canvas 0 0 640 480 10;
+#N canvas 0 0 1299 1009 10;
 #X declare -lib else;
 #X obj 529 6 declare -lib else;
 #X obj 17 346 bhack.chords;

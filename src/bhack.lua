@@ -2,6 +2,7 @@ local M = {}
 
 local llll = require("llll")
 local score = require("score/score")
+local utils = require("score/utils")
 
 _G.bhack_outlets = _G.bhack_outlets or {}
 _G.bhack_global_var = _G.bhack_global_var or {}
@@ -9,6 +10,7 @@ _G.bhack_global_var = _G.bhack_global_var or {}
 -- sub packages
 M.llll = llll
 M.score = score
+M.utils = utils
 
 --╭─────────────────────────────────────╮
 --│         llll output method          │
