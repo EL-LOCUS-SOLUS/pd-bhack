@@ -25,3 +25,6 @@ myScore:set_material({
 })
 
 local svg = myScore:getsvg()
+file = io.open("score_with_tuplets.svg", "w")
+file:write(svg)
+file:close()
