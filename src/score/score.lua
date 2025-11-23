@@ -445,6 +445,7 @@ local function should_render_stem(note)
 	if not note then
 		return false
 	end
+	-- TODO: Fix this, and use the figure
 	local head = note.notehead
 	if head == "noteheadWhole" then
 		return false
@@ -529,6 +530,25 @@ local function record_canvas_violation(ctx, glyph_name, bounds)
 	end
 end
 
+-- ─────────────────────────────────────
+local function glyph_width(ctx, glyph_name)
+	local bbox = ctx.glyph.bboxes[glyph_name]
+	if not bbox or not bbox.bBoxSW or not bbox.bBoxNE then
+		return nil
+	end
+
+	local units_per_space = ctx.glyph.units_per_space
+	local scale = ctx.glyph.scale
+
+	-- Convert bounding box x-coords to units
+	local sw_x_units = (bbox.bBoxSW[1] or 0) * units_per_space
+	local ne_x_units = (bbox.bBoxNE[1] or 0) * units_per_space
+
+	-- Width in pixels
+	return (ne_x_units - sw_x_units) * scale
+end
+
+-- ─────────────────────────────────────
 local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y, fill_color, options)
 	utils.log("glyph_group", 2)
 	options = options or {}
@@ -1412,9 +1432,15 @@ local function tie_anchor_for_note(state, note, orientation, is_start)
 	if not note then
 		return nil, nil
 	end
-	local spacing = state.staff_spacing or (state.ctx and state.ctx.staff and state.ctx.staff.spacing) or DEFAULT_SPACING
-	local left_extent = note.left_extent or (state.ctx and state.ctx.note and state.ctx.note.left_extent) or (spacing * 0.5)
-	local right_extent = note.right_extent or (state.ctx and state.ctx.note and state.ctx.note.right_extent) or (spacing * 0.5)
+	local spacing = state.staff_spacing
+		or (state.ctx and state.ctx.staff and state.ctx.staff.spacing)
+		or DEFAULT_SPACING
+	local left_extent = note.left_extent
+		or (state.ctx and state.ctx.note and state.ctx.note.left_extent)
+		or (spacing * 0.5)
+	local right_extent = note.right_extent
+		or (state.ctx and state.ctx.note and state.ctx.note.right_extent)
+		or (spacing * 0.5)
 	local anchor_x
 	if is_start then
 		anchor_x = (note.render_x or 0) + right_extent
@@ -1434,7 +1460,9 @@ local function add_tie_path(state, start_x, start_y, end_x, end_y, orientation)
 	if not (start_x and start_y and end_x and end_y) then
 		return
 	end
-	local spacing = state.staff_spacing or (state.ctx and state.ctx.staff and state.ctx.staff.spacing) or DEFAULT_SPACING
+	local spacing = state.staff_spacing
+		or (state.ctx and state.ctx.staff and state.ctx.staff.spacing)
+		or DEFAULT_SPACING
 	local min_span = spacing * 0.25
 	if end_x - start_x < min_span then
 		end_x = start_x + min_span
@@ -1926,89 +1954,72 @@ local function render_stem(ctx, note, head_metrics, direction_override)
 	if not should_render_stem(note) or not ctx.render_tree then
 		return nil
 	end
+
 	local clef_key = (ctx.clef and ctx.clef.config and ctx.clef.config.key) or "g"
 	local direction
-	local override_type = type(direction_override)
-	if override_type == "table" then
+	local t = type(direction_override)
+
+	if t == "table" then
 		direction = direction_override.direction or direction_override[1]
-	elseif override_type == "string" and direction_override ~= "" then
+	elseif t == "string" and direction_override ~= "" then
 		direction = direction_override
 	end
 
 	if not direction then
 		direction = ensure_chord_stem_direction(clef_key, note and note.chord)
-		if not direction then
-			direction = stem_direction(clef_key, note) or "up"
-		end
+		direction = direction or stem_direction(clef_key, note) or "up"
 	end
 
-	if note then
-		note.stem_direction = direction
-		if note.chord and not note.chord.stem_direction then
-			note.chord.stem_direction = direction
-		end
+	note.stem_direction = direction
+	if note.chord and not note.chord.stem_direction then
+		note.chord.stem_direction = direction
 	end
 
-	local align_x = (direction == "down") and "right" or "left"
-	local align_y = (direction == "down") and "top" or "bottom"
+	local note_x = note.render_x or 0
+	local head_half = (head_metrics and head_metrics.width or 0) * 0.5
 
-	local left_extent = note.left_extent or (ctx.note.left_extent or 0)
-	local right_extent = note.right_extent or (ctx.note.right_extent or 0)
-	if head_metrics and head_metrics.width and head_metrics.width > 0 then
-		local half_width = head_metrics.width * 0.5
-		left_extent = half_width
-		right_extent = half_width
-	end
+	local right_edge = note_x + head_half
+	local left_edge = note_x - head_half
 
 	local anchor_x
+	local align_x = "center"
+	local align_y = (direction == "down") and "top" or "bottom"
 	local anchor_y = note.render_y or 0
+
 	if direction == "down" then
-		anchor_x = (note.render_x or 0) - left_extent + 0.5
+		anchor_x = left_edge
 	else
-		anchor_x = (note.render_x or 0) + right_extent - 0.5
+		anchor_x = right_edge
 	end
 
-	local stem_group, stem_metrics = glyph_group(ctx, "stem", anchor_x, anchor_y, align_x, align_y, "#000000")
+	local stem_group, stem_metrics = glyph_group(ctx, note.stem, anchor_x, anchor_y, align_x, align_y, "#000000")
+
 	if stem_metrics then
 		stem_metrics.anchor_x = anchor_x
 		stem_metrics.anchor_y = anchor_y
 		stem_metrics.align_x = align_x
 		stem_metrics.align_y = align_y
-		local glyph_scale = (ctx.glyph and ctx.glyph.scale) or 1
+
+		local scale = ctx.glyph.scale
 		local sw_units = stem_metrics.sw_y_units or 0
 		local ne_units = stem_metrics.ne_y_units or 0
-		local translate_units = stem_metrics.translate_y_units or 0
-		local bottom_y = anchor_y - ((sw_units + translate_units) * glyph_scale)
-		local top_y = anchor_y - ((ne_units + translate_units) * glyph_scale)
+		local translate = stem_metrics.translate_y_units or 0
 
-		local tremolo_figure = utils.floor_pow2(note.figure or note.duration or note.value or 0)
-		local in_tuplet = chord_tuplet_id(note and note.chord)
-		if (not in_tuplet) and tremolo_figure and tremolo_figure > 16 then
-			local extra_steps = math.log(tremolo_figure / 16, 2)
-			if extra_steps and extra_steps > 0 then
-				local extend = (ctx.staff.spacing or 0) * 0.15 * extra_steps
-				if direction == "down" then
-					bottom_y = bottom_y + extend
-				else
-					top_y = top_y - extend
-				end
-			end
-		end
+		local bottom_y = anchor_y - ((sw_units + translate) * scale)
+		local top_y = anchor_y - ((ne_units + translate) * scale)
 
 		stem_metrics.bottom_y = bottom_y
 		stem_metrics.top_y = top_y
 		stem_metrics.flag_anchor_y = (direction == "down") and bottom_y or top_y
-		stem_metrics.max_x = stem_metrics.max_x or 0
-		stem_metrics.min_x = stem_metrics.min_x or 0
 	end
-	if note then
-		note.stem_anchor_x = anchor_x
-		note.stem_anchor_y = anchor_y
-		note.stem_align_x = align_x
-		note.stem_align_y = align_y
-		note.stem_metrics = stem_metrics
-		note.stem_flag_anchor_y = stem_metrics and stem_metrics.flag_anchor_y or nil
-	end
+
+	note.stem_anchor_x = anchor_x
+	note.stem_anchor_y = anchor_y
+	note.stem_align_x = align_x
+	note.stem_align_y = align_y
+	note.stem_metrics = stem_metrics
+	note.stem_flag_anchor_y = stem_metrics and stem_metrics.flag_anchor_y or nil
+
 	return stem_group, stem_metrics
 end
 
@@ -2380,7 +2391,7 @@ end
 local function create_initial_state(ctx, chords, spacing_sequence, measure_meta)
 	utils.log("create_initial_state", 2)
 	local staff = ctx.staff
-	local staff_spacing = staff.spacing or DEFAULT_SPACING
+	local staff_spacing = staff.spacing
 
 	return {
 		-- Core context
@@ -2522,7 +2533,7 @@ local function prepare_chord_notes(state)
 			note.letter = "B"
 			note.accidental = ""
 			note.octave = 4
-			note.notehead = "noteheadXBlack"
+			note.notehead = "noteheadBlack"
 		end
 		if note.raw and (not note.letter or not note.octave) then
 			note.letter, note.accidental, note.octave = parse_pitch(note.raw)
@@ -2862,8 +2873,7 @@ local function render_noteheads(state)
 	for _, note in ipairs(chord.notes) do
 		local center_x = chord_x + (note.cluster_offset_px or 0)
 		local note_y = staff_y_for_steps(state.ctx, note.steps)
-		local g, m =
-			glyph_group(state.ctx, note.notehead or "noteheadWhite", center_x, note_y, "center", "center", "#000000")
+		local g, m = glyph_group(state.ctx, note.notehead, center_x, note_y, "center", "center", "#000000")
 		if g then
 			table.insert(state.notes_svg, "  " .. g)
 			note.render_x = center_x
@@ -2965,6 +2975,7 @@ local function render_stems_and_flags(state)
 	local chord = state.current_chord
 	local clef_key = (state.ctx.clef and state.ctx.clef.config and state.ctx.clef.config.key) or "g"
 	local direction = ensure_chord_stem_direction(clef_key, chord)
+
 	for _, note in ipairs(chord.notes) do
 		local stem, stem_metrics = render_stem(state.ctx, note, state.note_head_metrics[note], direction)
 		if stem then
@@ -3015,7 +3026,8 @@ local function render_notes_and_chords(state)
 	state = prepare_chord_notes(state)
 
 	local skip_accidentals = state.skip_accidentals
-	local accidental_chunk, adjusted_x, accidental_state = render_accidents(state.ctx, chord, chord_x, state.layout_right)
+	local accidental_chunk, adjusted_x, accidental_state =
+		render_accidents(state.ctx, chord, chord_x, state.layout_right)
 	if adjusted_x then
 		state.current_chord_x = adjusted_x
 		chord_x = adjusted_x
@@ -3422,6 +3434,7 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 		if state.recorded_bounds then
 			state.recorded_bounds.index = (chord and chord.index) or entry_index
 			state.recorded_bounds.is_rest = (chord and chord.is_rest) or false
+			state.recorded_bounds.chord = chord
 			state.chords_rest_positions[#state.chords_rest_positions + 1] = state.recorded_bounds
 		end
 
@@ -3590,7 +3603,6 @@ end
 
 -- ─────────────────────────────────────
 local function compute_tuplet_label(reference_value, sum_value)
-	utils.log("compute_tuplet_label", 2)
 	utils.log("compute_tuplet_label", 2)
 	reference_value = math.max(1, math.floor(math.abs(reference_value or 1) + 0.5))
 	sum_value = math.max(1, math.floor(math.abs(sum_value or 1) + 0.5))
@@ -3805,13 +3817,15 @@ function Note:new(pitch, config)
 	obj.duration = duration
 	obj.steps = nil -- set later in paint context using clef
 	obj.cluster_offset_px = 0
+	obj.stem = "stem"
+
 	return obj
 end
 
 --╭─────────────────────────────────────╮
 --│                Chord                │
 --╰─────────────────────────────────────╯
-local function build_chord_notes(chord, notes, fallback_notehead)
+local function build_chord_notes(chord, notes, notehead, stem)
 	utils.log("build_chord_notes", 2)
 	chord.notes = {}
 	for _, entry in ipairs(notes) do
@@ -3823,18 +3837,10 @@ local function build_chord_notes(chord, notes, fallback_notehead)
 		note_obj.value = chord.value
 		note_obj.min_figure = chord.min_figure
 		note_obj.is_tied = chord.is_tied or false
-		local explicit_head = note_spec.notehead or note_spec.head
-		if explicit_head then
-			note_obj.notehead = explicit_head
-			note_obj.has_explicit_notehead = true
-		elseif fallback_notehead then
-			note_obj.notehead = fallback_notehead
-			note_obj.notehead_auto = fallback_notehead
-		elseif chord.notehead then
-			note_obj.notehead = chord.notehead
-			note_obj.notehead_auto = chord.notehead
-		end
+		note_obj.stem = stem
+		note_obj.notehead = notehead
 		note_obj.chord = chord
+		note_obj.stem = "stem"
 		table.insert(chord.notes, note_obj)
 	end
 end
@@ -3855,12 +3861,15 @@ function Chord:new(name, notes, entry_info)
 		obj.min_figure = entry_info.min_figure
 		obj.value = entry_info.value
 		obj.notehead = entry_info.notehead
+		obj.stem = "stem"
 		obj.spacing_multiplier = entry_info.spacing_multiplier
 		obj.is_tied = entry_info.is_tied or false
+	else
+		obj.stem = "stem"
 	end
 
 	if notes and #notes > 0 then
-		build_chord_notes(obj, notes, obj.notehead)
+		build_chord_notes(obj, notes, obj.notehead, obj.stem)
 	end
 
 	return obj
@@ -4017,6 +4026,9 @@ function Measure:append_value_entry(
 	if figure > 0 then
 		figure = utils.ceil_pow2(figure)
 	end
+
+	-- TODO: here would be good to get access to ctx
+
 	local notehead, dot_level = figure_to_notehead(value, min_figure)
 	local entry_meta = {
 		duration = duration_whole,
@@ -4477,12 +4489,15 @@ function Score:get_onsets()
 	local bpm = self.ctx.bpm
 	local bpm_figure = 4
 	local ms_per_whole = (60000 / bpm) * bpm_figure
+
 	local entry_onsets = {}
+	local entry_durations = {}
 	local cursor_ms = 0
 	for _, measure in ipairs(measures) do
 		for _, entry in ipairs(measure.entries or {}) do
-			entry_onsets[#entry_onsets + 1] = cursor_ms
 			local duration = entry and entry.duration or 0
+			entry_onsets[#entry_onsets + 1] = cursor_ms
+			entry_durations[#entry_durations + 1] = duration * ms_per_whole
 			cursor_ms = cursor_ms + (duration * ms_per_whole)
 		end
 	end
@@ -4492,6 +4507,7 @@ function Score:get_onsets()
 	for i = 1, total do
 		local attack = entry_onsets[i]
 		local entry = bounds[i]
+		entry.duration = entry_durations[i]
 		if attack and entry then
 			indexed[math.floor(attack)] = entry
 			if last_onset < attack then
@@ -4540,6 +4556,7 @@ function Score:getsvg()
 	-- Sequence (time signatures, notes, ledgers, barlines)
 	local ts_svg, notes_svg, ledger_svg, barline_svg, tuplet_svg, tie_svg, measure_number_svg, chords_rest_positions =
 		draw_sequence(self.ctx, self.ctx.chords, self.ctx.spacing_sequence, self.ctx.measure_meta)
+
 	self.ctx.chords_rest_positions = chords_rest_positions
 	if ts_svg then
 		table.insert(svg_chunks, ts_svg)

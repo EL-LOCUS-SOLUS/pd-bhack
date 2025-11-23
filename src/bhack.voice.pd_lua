@@ -32,7 +32,7 @@ function b_voice:initialize(_, args)
 	self.bpm = 120
 	self.current_measure = 1
 	self.entry = nil
-	self.noteoff = {}
+	self.previous_entry = nil
 
 	-- Initialize Score
 	self.Score = bhack.score.Score:new(self.width, self.height)
@@ -48,13 +48,44 @@ function b_voice:initialize(_, args)
 end
 
 -- ─────────────────────────────────────
+function b_voice:midiout()
+	if
+		self.previous_entry ~= nil
+		and self.previous_entry.chord
+		and not self.previous_entry.chord.is_tied
+		and not self.previous_entry.chord.is_rest
+	then
+		for i = 1, #self.previous_entry.chord.notes do
+			local pitchname = self.previous_entry.chord.notes[i].raw
+			local midi = n2m(pitchname)
+			self:outlet(1, "list", { midi, 0 })
+		end
+	end
+
+	if self.entry ~= nil and self.entry.chord and not self.entry.is_rest then
+		if self.previous_entry == nil or not (self.previous_entry.chord and self.previous_entry.chord.is_tied) then
+			for i = 1, #self.entry.chord.notes do
+				local pitchname = self.entry.chord.notes[i].raw
+				local midi = n2m(pitchname)
+				self:outlet(1, "list", { midi, 60 })
+			end
+		end
+	end
+end
+
+-- ─────────────────────────────────────
 function b_voice:clear_playbar()
+	for i = 1, #self.previous_entry.chord.notes do
+		local pitchname = self.previous_entry.chord.notes[i].raw
+		local midi = n2m(pitchname)
+		self:outlet(1, "list", { midi, 0 })
+	end
+
+	self.previous_entry = nil
+
+	-- sinal de término
 	self.is_playing = false
 	self.playbar_position = 0
-	local onsets, _ = self.Score:get_onsets()
-	local first_entry = onsets[0]
-	self.last_valid_position = first_entry and first_entry.left or 0
-	self.last_draw_position = nil
 	self:outlet(2, "bang", { "bang" })
 	self:repaint(2)
 end
@@ -62,46 +93,31 @@ end
 -- ─────────────────────────────────────
 function b_voice:playing_clock()
 	self.playbar_position = self.playbar_position + 1
+	self.onsets, self.last_onset = self.Score:get_onsets()
+
 	if self.playbar_position > self.last_onset then
-		local dur = self.entry.duration
-		self.clear_after_play:delay(dur)
-		self:repaint(2)
-		self.playbar_position = 0
+		self.previous_entry = self.entry
+		self.entry = nil
+		self.clear_after_play:delay(self.previous_entry.duration)
 		return
 	end
 
-	-- Calculate the actual draw position
-	self.onsets, self.last_onset = self.Score:get_onsets()
 	local entry = self.onsets[self.playbar_position]
 	local pos = (entry and entry.left) or self.last_valid_position or 0
 	local is_rest = entry and entry.is_rest
 
-	-- Only repaint if position changed
 	if pos ~= self.last_draw_position then
 		self.last_draw_position = pos
 		self.last_valid_position = pos
 		self.last_was_rest = is_rest
+
+		self.previous_entry = self.entry
 		self.entry = entry
-
-		if #self.noteoff > 1 then
-			for i = 1, #self.noteoff do
-				self:outlet(1, "list", { self.noteoff[i], 0 })
-			end
-			self.noteoff = {}
-		end
-
-		if self.entry ~= nil and not is_rest then
-			for i = 1, #self.entry.chord.notes do
-				local pitchname = self.entry.chord.notes[i].raw
-				local midi = n2m(pitchname)
-				table.insert(self.noteoff, midi)
-				self:outlet(1, "list", { midi, 60 })
-			end
-		end
-
+		self:midiout()
 		self:repaint(2)
 	end
 
+	-- agendar próximo tick (1 ms)
 	self.playclock:delay(1)
 end
 
@@ -280,25 +296,10 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:in_1_play()
+	self.onsets, self.last_onset = self.Score:get_onsets()
+	self.playbar_position = -1
 	self.playclock:delay(1)
 	self.is_playing = true
-	self.playbar_position = 0
-
-	self.onsets, self.last_onset = self.Score:get_onsets()
-	local first_entry = self.onsets[0]
-	self.last_valid_position = first_entry and first_entry.left or 0
-	self.last_draw_position = nil
-
-	if first_entry ~= nil and not first_entry.is_rest then
-		for i = 1, #first_entry.chord.notes do
-			local pitchname = first_entry.chord.notes[i].raw
-			local midi = n2m(pitchname)
-			table.insert(self.noteoff, midi)
-			self:outlet(1, "list", { midi, 60 })
-		end
-	end
-
-	self:repaint(2)
 end
 
 -- ─────────────────────────────────────
