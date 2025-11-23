@@ -15,11 +15,7 @@ end
 -- ─────────────────────────────────────
 function M:new_fromtable(pdobj, t)
 	local obj = setmetatable({}, self)
-	if type(t) ~= "table" then
-		obj.table = t
-	else
-		obj.table = t
-	end
+	obj.table = t
 	obj.pdobj = pdobj
 	pdobj._llll_id = tostring({}):match("0x[%x]+")
 	obj.depth = self:get_depth(obj.table)
@@ -77,8 +73,15 @@ end
 -- ─────────────────────────────────────
 function M:table_from_atoms(atoms)
 	local parts = {}
-	for _, v in ipairs(atoms) do
-		table.insert(parts, tostring(v))
+	if type(atoms) == "table" then
+		for _, v in ipairs(atoms) do
+			table.insert(parts, tostring(v))
+		end
+	else
+		self._s_open = "("
+		self._s_close = ")"
+		self.table = atoms
+		return self.table
 	end
 
 	local str = table.concat(parts, " ")
@@ -98,6 +101,7 @@ function M:table_from_atoms(atoms)
 	end
 
 	self.table = self:to_table(list_str)
+	return self.table
 end
 
 -- ─────────────────────────────────────
@@ -132,11 +136,11 @@ function M:to_string(tbl)
 			table.insert(parts, tostring(v))
 		end
 	end
-	
+
 	if self._s_open == nil or self._s_close == nil then
-		self._s_open = "["
-		self._s_close = "]"
-	end	
+		self._s_open = "("
+		self._s_close = ")"
+	end
 
 	return self._s_open .. table.concat(parts, " ") .. self._s_close
 end

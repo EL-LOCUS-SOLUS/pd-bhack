@@ -1,7 +1,7 @@
 local b_voice = pd.Class:new():register("bhack.voice")
 local bhack = require("bhack")
 
-local m2n = require("bhack").utils.m2n
+-- local m2n = require("bhack").utils.m2n
 local n2m = require("bhack").utils.n2m
 
 --╭─────────────────────────────────────╮
@@ -9,7 +9,7 @@ local n2m = require("bhack").utils.n2m
 --╰─────────────────────────────────────╯
 function b_voice:initialize(_, args)
 	self.inlets = 2
-	self.outlets = 1
+	self.outlets = 2
 
 	-- Material
 	self.CHORDS = { { name = "C4", notes = { "C4" } } }
@@ -55,6 +55,7 @@ function b_voice:clear_playbar()
 	local first_entry = onsets[0]
 	self.last_valid_position = first_entry and first_entry.left or 0
 	self.last_draw_position = nil
+	self:outlet(2, "bang", { "bang" })
 	self:repaint(2)
 end
 
@@ -62,7 +63,8 @@ end
 function b_voice:playing_clock()
 	self.playbar_position = self.playbar_position + 1
 	if self.playbar_position > self.last_onset then
-		self.clear_after_play:delay(500)
+		local dur = self.entry.duration
+		self.clear_after_play:delay(dur)
 		self:repaint(2)
 		self.playbar_position = 0
 		return
@@ -200,6 +202,15 @@ function b_voice:in_1_size(args)
 		self.height = maybe_height
 	end
 	self:set_size(self.width, self.height)
+	self.Score = bhack.score.Score:new(self.width, self.height)
+	self.Score:set_material({
+		clef = self.current_clef_key,
+		render_tree = true,
+		tree = self.rhythm_tree_spec,
+		chords = self.CHORDS,
+		bpm = self.bpm,
+	})
+
 	self:repaint()
 end
 
@@ -326,7 +337,8 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:paint(g)
-	self.svg = self.Score:getsvg(2, 2)
+	self.svg = self.Score:getsvg()
+
 	if self.svg == nil then
 		error("Error generating SVG")
 	end

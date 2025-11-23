@@ -191,6 +191,16 @@ function M.m2n(midi, temperament)
 	return string.format("%s%s%d", class_names[class_int], alter_symbol, octave)
 end
 
+-- ─────────────────────────────────────
+function M.hz2m(freq)
+	if type(freq) ~= "number" or freq <= 0 then
+		error("Frequency must be a positive number")
+	end
+	-- Standard formula: MIDI = 69 + 12 * log2(f / 440)
+	local midi = 69 + 12 * math.log(freq / 440) / math.log(2)
+	return math.floor(midi + 0.5) -- round to nearest integer
+end
+
 --╭─────────────────────────────────────╮
 --│               General               │
 --╰─────────────────────────────────────╯

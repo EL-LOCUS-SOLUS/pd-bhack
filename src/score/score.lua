@@ -4238,24 +4238,33 @@ function Score:get_onsets()
 	local bpm = self.ctx.bpm
 	local bpm_figure = 4
 	local ms_per_whole = (60000 / bpm) * bpm_figure
+
 	local entry_onsets = {}
+	local entry_duration = {}
 	self.event_elements = {}
 	local cursor_ms = 0
+
+	-- loop through measures and entries
 	for _, measure in ipairs(measures) do
-		for _, entry in ipairs(measure.entries or {}) do
-			entry_onsets[#entry_onsets + 1] = cursor_ms
+		for _, entry in ipairs(measure.entries) do
 			local duration = entry and entry.duration or 0
-			cursor_ms = cursor_ms + (duration * ms_per_whole)
+			local duration_ms = duration * ms_per_whole
+			entry_onsets[#entry_onsets + 1] = cursor_ms
+			entry_duration[#entry_duration + 1] = duration_ms
+			cursor_ms = cursor_ms + duration_ms
 		end
 	end
 
+	-- build indexed table
 	local indexed = {}
 	local total = math.min(#bounds, #entry_onsets)
-
 	local last_onset = 0
+
 	for i = 1, total do
 		local attack = entry_onsets[i]
+		local duration = entry_duration[i]
 		local entry = bounds[i]
+		entry.duration = duration
 		if attack and entry then
 			indexed[math.floor(attack)] = entry
 			if last_onset < attack then

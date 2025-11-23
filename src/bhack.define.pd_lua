@@ -27,7 +27,28 @@ function b_llll:in_1_list(atoms)
 end
 
 -- ─────────────────────────────────────
+function b_llll:in_1_float(atoms)
+	local llll = bhack.llll:new(self, atoms)
+	if self.llll_id ~= nil then
+		bhack.add_global_var(self.llll_id, llll)
+	end
+	llll:output(1)
+end
+
+-- ─────────────────────────────────────
 function b_llll:in_1_reload()
 	self:dofilex(self._scriptname)
+	package.loaded.bhack = nil
+	bhack = nil
+	for k, _ in pairs(package.loaded) do
+		if k == "score/score" or k == "score/utils" or k == "llll" then
+			pd.post(k)
+			package.loaded[k] = nil
+		end
+	end
+
+	self:dofilex(self._scriptname)
+	bhack = require("bhack")
+
 	self:initialize()
 end

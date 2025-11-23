@@ -38,9 +38,12 @@ end
 
 -- ─────────────────────────────────────
 function b_collect:in_2(sel, atoms)
-	table.insert(self.collected_table, atoms)
+	if sel == "float" then
+		table.insert(self.collected_table, atoms[1])
+	else
+		table.insert(self.collected_table, atoms[1])
+	end
 end
-
 
 -- ─────────────────────────────────────
 function b_collect:in_1_reload()
