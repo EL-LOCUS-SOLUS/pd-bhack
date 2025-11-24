@@ -56,8 +56,7 @@ function b_voice:midiout()
 		and not self.previous_entry.chord.is_rest
 	then
 		for i = 1, #self.previous_entry.chord.notes do
-			local pitchname = self.previous_entry.chord.notes[i].raw
-			local midi = n2m(pitchname)
+			local midi = self.previous_entry.chord.notes[i].midi
 			self:outlet(1, "list", { midi, 0 })
 		end
 	end
@@ -65,8 +64,7 @@ function b_voice:midiout()
 	if self.entry ~= nil and self.entry.chord and not self.entry.is_rest then
 		if self.previous_entry == nil or not (self.previous_entry.chord and self.previous_entry.chord.is_tied) then
 			for i = 1, #self.entry.chord.notes do
-				local pitchname = self.entry.chord.notes[i].raw
-				local midi = n2m(pitchname)
+				local midi = self.entry.chord.notes[i].midi
 				self:outlet(1, "list", { midi, 60 })
 			end
 		end
@@ -75,10 +73,12 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:clear_playbar()
-	for i = 1, #self.previous_entry.chord.notes do
-		local pitchname = self.previous_entry.chord.notes[i].raw
-		local midi = n2m(pitchname)
-		self:outlet(1, "list", { midi, 0 })
+	if not self.previous_entry.chord.is_rest then
+		for i = 1, #self.previous_entry.chord.notes do
+			local pitchname = self.previous_entry.chord.notes[i].raw
+			local midi = n2m(pitchname)
+			self:outlet(1, "list", { midi, 0 })
+		end
 	end
 
 	self.previous_entry = nil
@@ -297,6 +297,7 @@ end
 -- ─────────────────────────────────────
 function b_voice:in_1_play()
 	self.onsets, self.last_onset = self.Score:get_onsets()
+	self.last_onset = -1
 	self.playbar_position = -1
 	self.playclock:delay(1)
 	self.is_playing = true
@@ -348,9 +349,7 @@ function b_voice:paint(g)
 
 	local errors = self.Score:get_errors()
 	if #errors > 0 then
-		for _, err in ipairs(errors) do
-			self:error(tostring(err))
-		end
+		self:error("Seems that the score is small for the score")
 	end
 
 	g:set_color(247, 247, 247)

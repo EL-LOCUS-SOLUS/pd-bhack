@@ -235,7 +235,7 @@ local function instantiate_chord_blueprint(blueprint, entry_info, target)
 	end
 	if target then
 		target.name = blueprint.name or target.name or ""
-		target:populate_notes(note_specs, entry_info and entry_info.notehead)
+		target:populate_notes(note_specs)
 		return target
 	end
 	return Chord:new(blueprint.name, note_specs, entry_info)
@@ -552,8 +552,8 @@ end
 local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y, fill_color, options)
 	utils.log("glyph_group", 2)
 	options = options or {}
-	align_x = align_x or "center"
-	align_y = align_y or "center"
+	align_x = align_x
+	align_y = align_y
 
 	local glyph = getGlyph(glyph_name)
 	local bbox = ctx.glyph.bboxes[glyph_name]
@@ -563,10 +563,10 @@ local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y
 
 	local units_per_space = ctx.glyph.units_per_space
 	local glyph_scale = ctx.glyph.scale
-	local sw_x_units = (bbox.bBoxSW[1] or 0) * units_per_space
-	local sw_y_units = (bbox.bBoxSW[2] or 0) * units_per_space
-	local ne_x_units = (bbox.bBoxNE[1] or 0) * units_per_space
-	local ne_y_units = (bbox.bBoxNE[2] or 0) * units_per_space
+	local sw_x_units = bbox.bBoxSW[1] * units_per_space
+	local sw_y_units = bbox.bBoxSW[2] * units_per_space
+	local ne_x_units = bbox.bBoxNE[1] * units_per_space
+	local ne_y_units = bbox.bBoxNE[2] * units_per_space
 	local center_x_units = (sw_x_units + ne_x_units) * 0.5
 	local center_y_units = (sw_y_units + ne_y_units) * 0.5
 
@@ -636,6 +636,26 @@ local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y
 		end
 	end
 
+	local t = {
+		min_x = min_x_px,
+		max_x = max_x_px,
+		width = width_px,
+		height = (ne_y_units - sw_y_units) * glyph_scale,
+		sw_y_units = sw_y_units,
+		ne_y_units = ne_y_units,
+		translate_y_units = translate_y_units,
+		absolute_min_y = abs_min_y,
+		absolute_max_y = abs_max_y,
+	}
+
+	-- pd.post("---" .. glyph_name .. "---")
+
+	-- for k, v in pairs(t) do
+	-- 	if v ~= nil then
+	-- 		pd.post(k .. " " .. v)
+	-- 	end
+	-- end
+
 	return path,
 		{
 			min_x = min_x_px,
@@ -663,10 +683,11 @@ local function draw_staff(ctx)
 		table.insert(
 			lines,
 			string.format(
-				'    <rect x="%.3f" y="%.3f" width="%.3f" height="%.3f" fill="#000000"/>',
+				'    <line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#000000" stroke-width="%.3f"/>',
 				staff.left,
-				line_y - (staff.line_thickness * 0.5),
-				staff.width,
+				line_y,
+				staff.left + staff.width + 2,
+				line_y,
 				staff.line_thickness
 			)
 		)
@@ -1048,6 +1069,12 @@ local function ensure_chord_stem_direction(clef_key, chord)
 	if not chord then
 		return stem_direction(clef_key, nil) or "up"
 	end
+	local parent_tuplet = chord.parent_tuplet
+	if parent_tuplet and parent_tuplet.forced_direction then
+		if chord.forced_stem_direction ~= parent_tuplet.forced_direction then
+			chord.forced_stem_direction = parent_tuplet.forced_direction
+		end
+	end
 	if chord.forced_stem_direction and chord.stem_direction ~= chord.forced_stem_direction then
 		chord.stem_direction = chord.forced_stem_direction
 		for _, n in ipairs(chord.notes or {}) do
@@ -1251,24 +1278,38 @@ local function extend_stem_for_tuplet(state, note, stem_metrics, direction, old_
 	if not old_y or not new_y or math.abs(new_y - old_y) < 1e-3 then
 		return
 	end
-	local min_x_rel = stem_metrics.min_x or stem_metrics.max_x or 0
-	local max_x_rel = stem_metrics.max_x or stem_metrics.min_x or 0
-	local width = math.abs(max_x_rel - min_x_rel)
-	if width == 0 then
-		width = (state.ctx and state.ctx.staff and state.ctx.staff.line_thickness) or (state.staff_spacing * 0.12)
-	end
+
 	local anchor_x = stem_metrics.anchor_x or note.stem_anchor_x or note.render_x or 0
-	local rect_x = anchor_x + math.min(min_x_rel, max_x_rel)
-	local rect_y = math.min(old_y, new_y)
-	local height = math.abs(new_y - old_y)
-	local rect = string.format(
-		'  <rect x="%.3f" y="%.3f" width="%.3f" height="%.3f" fill="#000000"/>',
-		rect_x,
-		rect_y,
-		width,
-		height
+
+	-- Use line instead of rectangle
+	local line = string.format(
+		'  <line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#000000" stroke-width="%.3f"/>',
+		anchor_x,
+		old_y,
+		anchor_x,
+		new_y,
+		state.ctx.staff.line_thickness * 0.5
 	)
-	state.notes_svg[#state.notes_svg + 1] = rect
+	state.notes_svg[#state.notes_svg + 1] = line
+
+	-- Update tuplet beam position tracking if this note belongs to a tuplet
+	local chord = note.chord
+	if chord and chord.parent_tuplet then
+		local tuplet = chord.parent_tuplet
+		if direction == "down" then
+			-- For down stems, track the lowest position (maximum Y value)
+			if not tuplet.beam_lowest_pos or new_y > tuplet.beam_lowest_pos then
+				tuplet.beam_lowest_pos = new_y
+			end
+		else
+			-- For up stems, track the highest position (minimum Y value)
+			if not tuplet.beam_highest_pos or new_y < tuplet.beam_highest_pos then
+				tuplet.beam_highest_pos = new_y
+			end
+		end
+	end
+
+	-- Update stem metrics
 	if direction == "down" then
 		stem_metrics.bottom_y = new_y
 	else
@@ -1340,8 +1381,11 @@ local function record_tuplet_beam_note(state, chord, note, stem_metrics, directi
 	end
 	bucket.notes[#bucket.notes + 1] = {
 		index = state.current_position_index,
-		x = anchor_x,
-		y = anchor_y,
+		-- x = anchor_x,
+		-- y = anchor_y,
+		x = note.stem_anchor_x or anchor_x,
+		y = (stem_metrics and stem_metrics.flag_anchor_y) or anchor_y,
+
 		beams = beam_levels,
 		note = note,
 		stem_metrics = stem_metrics,
@@ -1591,7 +1635,9 @@ local function chord_is_tie_target(state, chord)
 	return false
 end
 
--- ─────────────────────────────────────
+--╭─────────────────────────────────────╮
+--│             BEAM GROUPS             │
+--╰─────────────────────────────────────╯
 local render_tuplet_draw_request
 local flush_pending_tuplet_draws
 local enqueue_tuplet_draw
@@ -1635,12 +1681,18 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 			direction = ((bucket.down_votes or 0) > (bucket.up_votes or 0)) and "down" or "up"
 		end
 	end
+	local forced_owner_direction = bucket.owner_tuplet and bucket.owner_tuplet.forced_direction
+	if forced_owner_direction then
+		direction = forced_owner_direction
+	end
 	bucket.direction = direction or "up"
 	local metrics = get_beam_glyph_metrics(state.ctx)
 	local beam_height = math.abs(metrics.height or 0)
+
 	if beam_height == 0 then
-		beam_height = spacing * 0.25
+		beam_height = spacing * 0.5
 	end
+
 	local min_beams = math.max(1, bucket.min_level or bucket.max_level or 1)
 	local max_beams = math.max(min_beams, bucket.max_level or min_beams)
 	local base_stem = spacing * (0.4 + (min_beams - 1) * 0.25)
@@ -1742,18 +1794,22 @@ local function render_tuplet_beams(state, tuplet)
 	if not tuplet or not tuplet.id or not state.tuplet_beam_data then
 		return state
 	end
+
 	local lookup = state.tuplet_bucket_lookup or {}
 	local bucket_id = lookup[tuplet.id] or tuplet.id
 	local bucket = state.tuplet_beam_data[bucket_id]
+
 	if not bucket or not bucket.notes or #bucket.notes < 2 then
 		if bucket and tuplet.id == bucket.owner_id then
 			state.tuplet_beam_data[bucket_id] = nil
 		end
 		return state
 	end
+
 	if tuplet.id ~= bucket.owner_id then
 		return state
 	end
+
 	bucket = finalize_tuplet_beam_geometry(state, bucket)
 	table.sort(bucket.notes, function(a, b)
 		if a.index == b.index then
@@ -1761,6 +1817,7 @@ local function render_tuplet_beams(state, tuplet)
 		end
 		return (a.index or 0) < (b.index or 0)
 	end)
+
 	local metrics = get_beam_glyph_metrics(state.ctx)
 	local beam_height = math.abs(metrics.height or 0)
 	if beam_height == 0 then
@@ -1769,11 +1826,63 @@ local function render_tuplet_beams(state, tuplet)
 	local beam_gap = (state.staff_spacing or 0) * 0.18
 	local direction = bucket.direction or "up"
 	local align_y = (direction == "down") and "bottom" or "top"
-	local staff_center = (state.ctx and state.ctx.staff and state.ctx.staff.center) or 0
-	local base_line_y = bucket.beam_line_y
-		or ((direction == "down") and (staff_center + beam_height) or (staff_center - beam_height))
+
+	-- Find the exact stem tip positions
+	local extreme_y
+	if direction == "down" then
+		-- For down stems, use the bottom_y (tip of the stem pointing down)
+		extreme_y = -math.huge
+		for _, entry in ipairs(bucket.notes) do
+			if entry.stem_metrics and entry.stem_metrics.bottom_y then
+				local bottom_y = entry.stem_metrics.bottom_y
+				if bottom_y > extreme_y then
+					extreme_y = bottom_y
+				end
+			elseif entry.is_break then
+				-- For rest breaks, use the entry's y position
+				local break_y = entry.y
+				if break_y and break_y > extreme_y then
+					extreme_y = break_y
+				end
+			end
+		end
+		-- If no valid positions found, use fallback
+		if extreme_y == -math.huge then
+			extreme_y = (state.ctx and state.ctx.staff and state.ctx.staff.center) or (0 + (state.staff_spacing * 3))
+		end
+	else
+		-- For up stems, use the top_y (tip of the stem pointing up)
+		extreme_y = math.huge
+		for _, entry in ipairs(bucket.notes) do
+			if entry.stem_metrics and entry.stem_metrics.top_y then
+				local top_y = entry.stem_metrics.top_y
+				if top_y < extreme_y then
+					extreme_y = top_y
+				end
+			elseif entry.is_break then
+				-- For rest breaks, use the entry's y position
+				local break_y = entry.y
+				if break_y and break_y < extreme_y then
+					extreme_y = break_y
+				end
+			end
+		end
+		-- If no valid positions found, use fallback
+		if extreme_y == math.huge then
+			extreme_y = (state.ctx and state.ctx.staff and state.ctx.staff.center) or (0 - (state.staff_spacing * 3))
+		end
+	end
+
+	if direction == "down" then
+		tuplet.beam_lowest_pos = extreme_y
+	else
+		tuplet.beam_highest_pos = extreme_y
+	end
+
+	local base_line_y = extreme_y -- Use the exact stem tip position
 	local max_level = bucket.max_level or 0
 	local notes = bucket.notes
+
 	for level = 1, max_level do
 		local run_start, run_end = nil, nil
 		local function flush_run()
@@ -1832,6 +1941,7 @@ local function render_tuplet_beams(state, tuplet)
 		end
 		flush_run()
 	end
+
 	state.tuplet_beam_geometry = state.tuplet_beam_geometry or {}
 	local family = state.tuplet_family_members and state.tuplet_family_members[bucket_id]
 	if family then
@@ -1992,10 +2102,30 @@ local function render_stem(ctx, note, head_metrics, direction_override)
 		anchor_x = right_edge
 	end
 
+	-- Initial placement (will be corrected below)
 	local stem_group, stem_metrics = glyph_group(ctx, note.stem, anchor_x, anchor_y, align_x, align_y, "#000000")
 
+	-----------------------------------------------------------------------
+	-- FIX: Correct anchor_x for wider/off-center stem glyphs (like uniE212)
+	-----------------------------------------------------------------------
 	if stem_metrics then
+		local scale = ctx.glyph.scale or 1
+
+		-- horizontal center in font units
+		local center_units = (stem_metrics.min_x + stem_metrics.max_x) * 0.5
+
+		-- convert to rendered px
+		local center_px = center_units * scale
+
+		-- shift so visual stem center sits exactly on left_edge/right_edge
+		anchor_x = anchor_x - center_px
+
+		-- store corrected anchor for downstream usage
 		stem_metrics.anchor_x = anchor_x
+	end
+	-----------------------------------------------------------------------
+
+	if stem_metrics then
 		stem_metrics.anchor_y = anchor_y
 		stem_metrics.align_x = align_x
 		stem_metrics.align_y = align_y
@@ -2554,12 +2684,12 @@ local function prepare_chord_notes(state)
 end
 
 -- ─────────────────────────────────────
-local function draw_tuplet_glyph(state, glyph_name, x, y)
+local function draw_tuplet_glyph(state, glyph_name, x, y, align_y)
 	utils.log("draw_tuplet_glyph", 2)
 	if not glyph_name or not x or not y then
 		return state
 	end
-	local chunk = glyph_group(state.ctx, glyph_name, x, y, "center", "center", "#000000")
+	local chunk = glyph_group(state.ctx, glyph_name, x, y, "center", align_y or "center", "#000000")
 	if chunk then
 		state.tuplet_svg[#state.tuplet_svg + 1] = "  " .. chunk
 	end
@@ -2613,6 +2743,7 @@ local function render_tuplet_label_at(state, label, start_x, end_x, y)
 	return state
 end
 
+-- ─────────────────────────────────────
 render_tuplet_draw_request = function(state, request)
 	if not request or not request.tuplet then
 		return true
@@ -2622,32 +2753,54 @@ render_tuplet_draw_request = function(state, request)
 	if request.requires_geometry and not geometry then
 		return false
 	end
-	local y = request.base_y or state.tuplet_y_base
-	if geometry and geometry.beam_line_y then
-		local direction = geometry.direction or "up"
-		local clearance = (state.tuplet_level_spacing * 0.6)
-			+ (geometry.beam_height or (state.staff_spacing or 0) * 2.25)
-		if direction == "down" then
-			local min_y = geometry.beam_line_y + clearance
-			if y < min_y then
-				y = min_y
-			end
-		else
-			local max_y = geometry.beam_line_y - clearance
-			if y > max_y then
-				y = max_y
-			end
-		end
+
+	-- Get max depth for proper stacking calculation
+	local max_depth = state.max_tuplet_depth or 1
+	local depth = tuplet.depth or 1
+
+	-- Get the direction for this tuplet
+	local direction = tuplet.forced_direction or "up"
+
+	-- Calculate vertical offset - deeper levels are closer to beam group
+	local levels_from_deepest = max_depth - depth
+	local depth_offset = state.tuplet_level_spacing * levels_from_deepest
+
+	-- Use the stored beam position from render_tuplet_beams
+	local beam_reference_y
+	if direction == "down" and tuplet.beam_lowest_pos then
+		beam_reference_y = tuplet.beam_lowest_pos
+	elseif direction == "up" and tuplet.beam_highest_pos then
+		beam_reference_y = tuplet.beam_highest_pos
+	else
+		-- Fallback to the geometry beam line if available, otherwise use request.base_y
+		beam_reference_y = (geometry and geometry.beam_line_y) or (request.base_y or state.tuplet_y_base)
 	end
-	state = draw_tuplet_glyph(state, "textTupletBracketStartShortStem", request.start_x, y - state.staff_spacing)
-	state = draw_tuplet_glyph(state, "textTupletBracketEndShortStem", request.end_x, y - state.staff_spacing)
-	state = render_tuplet_label_at(state, request.label, request.start_x, request.end_x, y - state.staff_spacing)
+
+	-- Position relative to the beam with proper clearance
+	local clearance_from_beam = state.tuplet_level_spacing * 1.5
+
+	local y
+	if direction == "down" then
+		-- For down stems: tuplets are BELOW beam group, deeper levels are closer to beams
+		y = beam_reference_y + clearance_from_beam + depth_offset
+	else
+		-- For up stems: tuplets are ABOVE beam group, deeper levels are closer to beams
+		y = beam_reference_y - clearance_from_beam - depth_offset
+	end
+
+	-- Draw tuplet brackets and label at the calculated position
+	local bracket_align_y = (direction == "down") and "top" or "bottom"
+	state = draw_tuplet_glyph(state, "textTupletBracketStartLongStem", request.start_x, y, bracket_align_y)
+	state = draw_tuplet_glyph(state, "textTupletBracketEndLongStem", request.end_x, y, bracket_align_y)
+	state = render_tuplet_label_at(state, request.label, request.start_x, request.end_x, y)
+
 	if geometry then
 		state.tuplet_beam_geometry[tuplet] = nil
 	end
 	return true
 end
 
+-- ─────────────────────────────────────
 flush_pending_tuplet_draws = function(state)
 	state.pending_tuplet_draws = state.pending_tuplet_draws or {}
 	if #state.pending_tuplet_draws == 0 then
@@ -2676,6 +2829,7 @@ end
 -- ─────────────────────────────────────
 local function finalize_tuplet(state, tuplet)
 	utils.log("finalize_tuplet", 2)
+
 	local tuplet_state = state.tuplet_states[tuplet]
 
 	if not tuplet_state then
@@ -2703,55 +2857,77 @@ local function finalize_tuplet(state, tuplet)
 		end_x = start_x + (state.staff_spacing * 0.5)
 	end
 
-	local base_y = (meta and meta.tuplet_base_y) or state.tuplet_y_base
-	local gap = state.tuplet_level_spacing
-	local extra_gap = state.measure_tuplet_extra_gap
-	local max_nested = (meta and meta.max_nested_tuplet_depth) or 0
-	if max_nested < 0 then
-		max_nested = 0
-	end
-
-	local y
-	if tuplet.is_measure_tuplet then
-		y = base_y - (max_nested * gap) - extra_gap
-	else
-		local depth = math.max(1, tuplet.depth or 1)
-		if max_nested < depth then
-			max_nested = depth
-		end
-		local offset = (max_nested - depth) * gap
-		y = base_y - offset
-	end
-
-	local beam_geom = state.tuplet_beam_geometry and state.tuplet_beam_geometry[tuplet]
-	if beam_geom and beam_geom.beam_line_y then
-		local direction = beam_geom.direction or "up"
-		local clearance = (gap * 0.6) + (beam_geom.beam_height or (state.staff_spacing or 0) * 0.25)
-		if direction == "down" then
-			local min_y = beam_geom.beam_line_y + clearance
-			if y < min_y then
-				y = min_y
-			end
-		else
-			local max_y = beam_geom.beam_line_y - clearance
-			if y > max_y then
-				y = max_y
-			end
-		end
-		state.tuplet_beam_geometry[tuplet] = nil
-	end
-
+	-- Get beam geometry for this tuplet
 	local lookup = state.tuplet_bucket_lookup or {}
 	local bucket_id = lookup[tuplet.id]
+	local beam_geom = state.tuplet_beam_geometry and state.tuplet_beam_geometry[tuplet]
+
+	-- Use beam line Y position if available, otherwise calculate based on direction
+	local y
+	if beam_geom and beam_geom.beam_line_y then
+		-- Use the actual beam line position from the geometry
+		y = beam_geom.beam_line_y
+
+		-- Apply clearance based on direction
+		local direction = beam_geom.direction or "up"
+		local gap = state.tuplet_level_spacing
+		local clearance = (gap * 0.6) + (beam_geom.beam_height or (state.staff_spacing or 0) * 0.25)
+
+		if direction == "down" then
+			-- For down stems, place tuplet below the beam
+			y = y + clearance
+		else
+			-- For up stems, place tuplet above the beam
+			y = y - clearance
+		end
+
+		state.tuplet_beam_geometry[tuplet] = nil
+	else
+		-- Fallback: Try to get direction from tuplet beam data
+		local direction = "up" -- default fallback
+		if bucket_id and state.tuplet_beam_data and state.tuplet_beam_data[bucket_id] then
+			direction = state.tuplet_beam_data[bucket_id].direction or "up"
+		end
+
+		local gap = state.tuplet_level_spacing
+		local extra_gap = state.measure_tuplet_extra_gap
+		local max_nested = (meta and meta.max_nested_tuplet_depth) or 0
+		if max_nested < 0 then
+			max_nested = 0
+		end
+
+		if tuplet.is_measure_tuplet then
+			if direction == "down" then
+				y = state.tuplet_y_base + (max_nested * gap) + extra_gap
+			else
+				y = state.tuplet_y_base - (max_nested * gap) - extra_gap
+			end
+		else
+			local depth = math.max(1, tuplet.depth or 1)
+			if max_nested < depth then
+				max_nested = depth
+			end
+			local offset = (max_nested - depth) * gap
+			if direction == "down" then
+				y = state.tuplet_y_base + offset
+			else
+				y = state.tuplet_y_base - offset
+			end
+		end
+		state.max_nested_tuplet_depth = max_nested
+		pd.post(max_nested)
+	end
+
 	local requires_geometry = false
 	if bucket_id and state.tuplet_beam_data and state.tuplet_beam_data[bucket_id] then
 		requires_geometry = true
 	end
+
 	state = enqueue_tuplet_draw(state, {
 		tuplet = tuplet,
 		start_x = start_x,
 		end_x = end_x,
-		base_y = y,
+		base_y = y, -- This now comes from beam geometry
 		label = tuplet.label_string,
 		requires_geometry = requires_geometry,
 	})
@@ -2951,10 +3127,11 @@ local function render_ledgers(state)
 				table.insert(
 					state.ledger_svg,
 					string.format(
-						'  <rect x="%.3f" y="%.3f" width="%.3f" height="%.3f" fill="#000000"/>',
+						'  <line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#000000" stroke-width="%.3f"/>',
 						left,
-						y - (state.ledger_cfg.thickness * 0.5),
-						len,
+						y,
+						right,
+						y,
 						state.ledger_cfg.thickness
 					)
 				)
@@ -2976,12 +3153,55 @@ local function render_stems_and_flags(state)
 	local clef_key = (state.ctx.clef and state.ctx.clef.config and state.ctx.clef.config.key) or "g"
 	local direction = ensure_chord_stem_direction(clef_key, chord)
 
+	local minnote = chord.notes[1]
+	local maxnote = chord.notes[1]
 	for _, note in ipairs(chord.notes) do
-		local stem, stem_metrics = render_stem(state.ctx, note, state.note_head_metrics[note], direction)
-		if stem then
-			table.insert(state.notes_svg, "  " .. stem)
-			state.stem_metrics_by_note[note] = stem_metrics
+		if minnote.midi > note.midi then
+			minnote = note
 		end
+		if maxnote.midi < note.midi then
+			maxnote = note
+		end
+	end
+
+	-- Render the main stem
+	local stem_note, stem, stem_metrics
+	if direction == "up" then
+		stem, stem_metrics = render_stem(state.ctx, maxnote, state.note_head_metrics[maxnote], direction)
+		stem_note = maxnote
+	else
+		stem, stem_metrics = render_stem(state.ctx, minnote, state.note_head_metrics[minnote], direction)
+		stem_note = minnote
+	end
+
+	if stem then
+		table.insert(state.notes_svg, "  " .. stem)
+		state.stem_metrics_by_note[stem_note] = stem_metrics
+	end
+
+	-- Draw single connecting line between highest and lowest notes
+	if stem_metrics and #chord.notes > 1 then
+		local stem_x = stem_metrics.anchor_x or (stem_note.stem_anchor_x or stem_note.render_x or 0)
+		local start_y, end_y
+		if direction == "up" then
+			start_y = stem_metrics.top_y or maxnote.render_y or 0
+			end_y = minnote.render_y or 0
+		else
+			-- For down stems: line goes from lowest note (stem start) up to highest note
+			start_y = stem_metrics.bottom_y or minnote.render_y or 0
+			end_y = maxnote.render_y or 0
+		end
+
+		-- Create single vertical line connecting the extremes
+		local line = string.format(
+			'  <line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#000000" stroke-width="%.3f"/>',
+			stem_x,
+			start_y,
+			stem_x,
+			end_y,
+			state.ctx.staff.line_thickness or 1
+		)
+		table.insert(state.notes_svg, line)
 	end
 
 	-- Flags
@@ -3795,29 +4015,14 @@ function Note:new(pitch, config)
 	local obj = setmetatable({}, self)
 	obj.raw = pitch
 	obj.letter, obj.accidental, obj.octave = parse_pitch(pitch)
+	obj.midi = utils.n2m(obj.raw)
 
-	local explicit_notehead = false
-	local duration = nil
-	local figure = nil
-
-	if type(config) == "table" then
-		if config.notehead then
-			explicit_notehead = true
-		elseif config.head then
-			explicit_notehead = true
-		end
-		duration = config.duration or config.figure or config.value
-		figure = config.figure or duration
-	elseif config ~= nil then
-		explicit_notehead = true
+	for k, v in pairs(config) do
+		obj[k] = v
 	end
 
-	obj.has_explicit_notehead = explicit_notehead
-	obj.figure = figure
-	obj.duration = duration
 	obj.steps = nil -- set later in paint context using clef
 	obj.cluster_offset_px = 0
-	obj.stem = "stem"
 
 	return obj
 end
@@ -3825,22 +4030,22 @@ end
 --╭─────────────────────────────────────╮
 --│                Chord                │
 --╰─────────────────────────────────────╯
-local function build_chord_notes(chord, notes, notehead, stem)
+local function build_chord_notes(chord, notes)
 	utils.log("build_chord_notes", 2)
 	chord.notes = {}
 	for _, entry in ipairs(notes) do
 		local note_spec = clone_note_entry(entry)
 		local pitch = note_spec.pitch or note_spec.raw or note_spec.note or note_spec[1] or entry
-		local note_obj = Note:new(pitch, {})
-		note_obj.duration = chord.duration
-		note_obj.figure = chord.figure
-		note_obj.value = chord.value
-		note_obj.min_figure = chord.min_figure
-		note_obj.is_tied = chord.is_tied or false
-		note_obj.stem = stem
-		note_obj.notehead = notehead
-		note_obj.chord = chord
-		note_obj.stem = "stem"
+		local note_obj = Note:new(pitch, {
+			duration = chord.duration,
+			figure = chord.figure,
+			value = chord.value,
+			min_figure = chord.min_figure,
+			is_tied = chord.is_tied or false,
+			stem = chord.stem,
+			notehead = chord.notehead,
+			chord = chord,
+		})
 		table.insert(chord.notes, note_obj)
 	end
 end
@@ -3851,7 +4056,10 @@ function Chord:new(name, notes, entry_info)
 	obj.name = name or ""
 	obj.notes = {}
 
-	--pd.post(entry_info.min_figure)
+	-- default values
+	obj.stem = "stem"
+	obj.notehead = "noteheadBlack"
+
 	if entry_info then
 		obj.figure = entry_info.figure
 		obj.duration = entry_info.duration
@@ -3861,23 +4069,36 @@ function Chord:new(name, notes, entry_info)
 		obj.min_figure = entry_info.min_figure
 		obj.value = entry_info.value
 		obj.notehead = entry_info.notehead
-		obj.stem = "stem"
 		obj.spacing_multiplier = entry_info.spacing_multiplier
 		obj.is_tied = entry_info.is_tied or false
-	else
-		obj.stem = "stem"
 	end
 
 	if notes and #notes > 0 then
-		build_chord_notes(obj, notes, obj.notehead, obj.stem)
+		build_chord_notes(obj, notes)
 	end
 
 	return obj
 end
 
 -- ─────────────────────────────────────
-function Chord:populate_notes(notes, fallback_notehead)
-	build_chord_notes(self, notes, fallback_notehead or self.notehead)
+function Chord:populate_notes(notes)
+	utils.log("build_chord_notes", 2)
+	self.notes = {}
+	for _, entry in ipairs(notes) do
+		local note_spec = clone_note_entry(entry)
+		local pitch = note_spec.pitch or note_spec.raw or note_spec.note or note_spec[1] or entry
+		local note_obj = Note:new(pitch, {
+			duration = self.duration,
+			figure = self.figure,
+			value = self.value,
+			min_figure = self.min_figure,
+			is_tied = self.is_tied or false,
+			stem = self.stem,
+			notehead = self.notehead,
+			chord = self,
+		})
+		table.insert(self.notes, note_obj)
+	end
 	return self
 end
 
@@ -3919,6 +4140,8 @@ function Tuplet:new(up_value, rhythms, parent_context)
 	obj.parent = parent_context and parent_context.parent or nil
 	obj.depth = (parent_context and parent_context.depth) or 1
 	obj.require_draw = true
+	obj.beam_highest_pos = nil
+	obj.beam_lowest_pos = nil
 
 	local parent_sum = parent_context.parent_sum
 	if parent_sum <= 0 then
@@ -4161,6 +4384,7 @@ function Measure:get_measure_min_fig()
 	self.min_figure = utils.floor_pow2(fig)
 end
 
+-- ─────────────────────────────────────
 local function assign_tuplet_directions(chords, tuplets, clef_key)
 	utils.log("assign_tuplet_directions", 2)
 	local lookup = {}
@@ -4246,16 +4470,15 @@ function Voice:new(material)
 				and tuple_obj.end_index
 				and tuple_obj.end_index >= tuple_obj.start_index
 			then
-				local cloned = {
-					id = tuple_obj.id,
-					start_index = tuple_obj.start_index + entry_offset,
-					end_index = tuple_obj.end_index + entry_offset,
-					label_string = tuple_obj.label_string,
-					depth = tuple_obj.depth,
-					measure_index = measure_index,
-					duration = tuple_obj.duration,
-					require_draw = tuple_obj.require_draw,
-				}
+				local cloned = {}
+				for k, v in pairs(tuple_obj) do
+					cloned[k] = v
+				end
+
+				cloned.start_index = tuple_obj.start_index + entry_offset
+				cloned.end_index = tuple_obj.end_index + entry_offset
+				cloned.measure_index = measure_index
+
 				obj.tuplets[#obj.tuplets + 1] = cloned
 				if tuple_obj.depth and tuple_obj.depth > obj.max_tuplet_depth then
 					obj.max_tuplet_depth = tuple_obj.depth
@@ -4311,15 +4534,13 @@ function Voice:new(material)
 						local spec = chords_mat[chord_cursor]
 						if spec then
 							element.name = spec.name or element.name or ""
-							element:populate_notes(spec.notes or {}, element.notehead)
+							element:populate_notes(spec.notes or {})
 							chord_cursor = chord_cursor + 1
 						elseif last_blueprint then
 							instantiate_chord_blueprint(last_blueprint, { notehead = element.notehead }, element)
 						end
 					end
-				end
-
-				if element.notes and #element.notes > 0 then
+				elseif element.notes and #element.notes > 0 then
 					last_blueprint = chord_to_blueprint(element)
 					if element.is_tied then
 						pending_tie_blueprint = last_blueprint
