@@ -364,16 +364,23 @@ function b_voice:in_1_save(atoms)
 		error("Invalid path for saving score")
 	end
 
-	-- save the self.svg to file
-	if self.svg == nil then
-		error("SVG is nil")
+	if path:match("%.svg$") then
+		print("Path ends with .svg")
+		if self.svg == nil then
+			error("SVG is nil")
+		end
+		local file, err = io.open(path, "w")
+		if not file then
+			error("Error opening file for writing: " .. tostring(err))
+		end
+		file:write(self.svg)
+		file:close()
+	elseif path:match("%.musicxml$") then
+		self.Score:export_voice_musicxml(path)
+		return
+	else
+		error("Just .svg and .musicxml are supported")
 	end
-	local file, err = io.open(path, "w")
-	if not file then
-		error("Error opening file for writing: " .. tostring(err))
-	end
-	file:write(self.svg)
-	file:close()
 end
 
 -- ─────────────────────────────────────

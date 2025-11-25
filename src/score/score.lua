@@ -194,6 +194,66 @@ Score.__index = Score
 M.Score = Score
 
 --╭─────────────────────────────────────╮
+--│           Rhythm Helpers            │
+--╰─────────────────────────────────────╯
+local function resolve_musicxml_type(element)
+	utils.log("resolve_rest_glyph", 2)
+	if not element then
+		return nil
+	end
+
+	local figure = element.min_figure / element.value
+	figure = utils.ceil_pow2(figure)
+
+	if figure <= 1 then
+		return "whole"
+	elseif figure <= 2 then
+		return "half"
+	elseif figure <= 4 then
+		return "quarter"
+	elseif figure <= 8 then
+		return "eighth"
+	elseif figure == 32 then
+		return "32nd"
+	elseif figure == 512 then
+		return "512nd"
+	else
+		return figure .. "th"
+	end
+end
+
+-- ─────────────────────────────────────
+local function resolve_musicxml_smulfalter(element)
+	local letter, acc, octave = utils.parse_pitch(element.raw)
+	if acc == nil then
+		return false, 0
+	end
+
+	local alter = 0
+	local smulf = false
+	for i = 1, #acc do
+		local c = acc:sub(i, i)
+		if c == "#" then
+			alter = alter + 1
+		elseif c == "+" then
+			alter = alter + 0.5
+		elseif c == "^" then
+			smulf = true
+			alter = alter + 0.215
+		elseif c == "b" then
+			alter = alter - 1
+		elseif c == "-" then
+			alter = alter - 0.5
+		elseif c == "v" then
+			smulf = true
+			alter = alter - 0.215
+		end
+	end
+
+	return smulf, alter
+end
+
+--╭─────────────────────────────────────╮
 --│      Rendering Helper Methods       │
 --╰─────────────────────────────────────╯
 local function chord_to_blueprint(chord)
@@ -4815,6 +4875,109 @@ end
 -- ─────────────────────────────────────
 function Score:get_errors()
 	return self.ctx and self.ctx.error or {}
+end
+
+-- ─────────────────────────────────────
+function Score:export_voice_musicxml(path)
+	local measures = self.ctx.measures or {}
+
+	local xml_lines = {}
+	table.insert(xml_lines, '<?xml version="1.0" encoding="UTF-8"?>')
+	table.insert(xml_lines, "<!DOCTYPE score-partwise>")
+	table.insert(xml_lines, '<score-partwise version="4.0">')
+	table.insert(xml_lines, "<work><work-title>pd-bhack: Experimental musicxml export</work-title></work>")
+	table.insert(xml_lines, '<identification><creator type="composer">pd-bhack</creator></identification>')
+	table.insert(xml_lines, '<part-list><score-part id="P1"/></part-list>')
+	table.insert(xml_lines, '<part id="P1">')
+
+	-- Measure by Measure
+	local previous_timesig = measures[1].time_sig
+	for i, measure in ipairs(measures) do
+		local time_sig = measure.time_sig
+		table.insert(xml_lines, string.format('<measure number="%d">', i))
+		if i == 1 then
+			table.insert(xml_lines, "<attributes>")
+			table.insert(xml_lines, "<key><fifths>0</fifths></key>")
+			table.insert(
+				xml_lines,
+				string.format("<time><beats>%d</beats><beat-type>%d</beat-type></time>", time_sig[1], time_sig[2])
+			)
+			table.insert(xml_lines, "<clef><sign>G</sign><line>2</line></clef>")
+			table.insert(xml_lines, "</attributes>")
+		elseif time_sig[1] ~= previous_timesig[1] or time_sig[2] ~= previous_timesig[2] then
+			table.insert(xml_lines, "<attributes>")
+			table.insert(
+				xml_lines,
+				string.format("<time><beats>%d</beats><beat-type>%d</beat-type></time>", time_sig[1], time_sig[2])
+			)
+			table.insert(xml_lines, "</attributes>")
+		end
+        previous_timesig = time_sig
+
+		-- Note by Note
+		for _, entry in ipairs(measure.entries or {}) do
+			if entry.is_rest then
+				table.insert(xml_lines, "<note>")
+				table.insert(xml_lines, "<rest/>")
+				table.insert(xml_lines, string.format("<type>%s</type>", resolve_musicxml_type(entry)))
+				table.insert(xml_lines, "</note>")
+			else
+				local first_note = true
+				for _, note in ipairs(entry.notes or {}) do
+					table.insert(xml_lines, "<note>")
+					if not first_note then
+						table.insert(xml_lines, "<chord/>")
+					end
+
+					local smufl, alter = resolve_musicxml_smulfalter(note)
+
+					table.insert(
+						xml_lines,
+						string.format(
+							"<pitch><step>%s</step><alter>%s</alter><octave>%d</octave></pitch>",
+							note.letter,
+							alter,
+							note.octave
+						)
+					)
+					table.insert(xml_lines, string.format("<type>%s</type>", resolve_musicxml_type(note)))
+					if smufl then
+						local acc = M.ACCIDENTAL_GLYPHS[note.accidental]
+						table.insert(
+							xml_lines,
+							string.format(
+								"<accidental cautionary='yes' parentheses='no' smufl='%s'>other</accidental>",
+								acc
+							)
+						)
+					end
+
+					table.insert(xml_lines, "</note>")
+					first_note = false
+				end
+			end
+		end
+
+		table.insert(xml_lines, "</measure>")
+	end
+
+	table.insert(xml_lines, "</part>")
+	table.insert(xml_lines, "</score-partwise>")
+	local xml_content = table.concat(xml_lines, "\n")
+
+	if path then
+		local file, err = io.open(path, "w")
+		if not file then
+			error("Failed to open file: " .. (err or "unknown"))
+		end
+		local success, write_err = file:write(xml_content)
+		file:close()
+		if not success then
+			error("Failed to write file: " .. (write_err or "unknown"))
+		end
+		return true
+	end
+	return true
 end
 
 -- ─────────────────────────────────────
