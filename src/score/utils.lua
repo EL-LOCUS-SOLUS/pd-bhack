@@ -218,6 +218,10 @@ end
 
 -- ─────────────────────────────────────
 function M.table_depth(t)
+	if type(t) ~= "table" then
+		return 0
+	end
+
 	local max_depth = 1
 	for _, v in pairs(t) do
 		if type(v) == "table" then
@@ -232,6 +236,10 @@ end
 
 -- ─────────────────────────────────────
 function M.table_tostring(t)
+	if type(t) ~= "table" then
+		pd.post(t)
+	end
+
 	local parts = {}
 	for _, v in ipairs(t) do
 		if type(v) == "table" then

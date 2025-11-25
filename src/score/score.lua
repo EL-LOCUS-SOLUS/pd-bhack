@@ -158,7 +158,7 @@ local STEM_DIRECTION_THRESHOLDS = {
 }
 
 M.DEFAULT_CLEF_LAYOUT = {
-	padding_spaces = 0.1,
+	padding_spaces = 1,
 	horizontal_offset_spaces = 0.8,
 	spacing_after = 2.0,
 	vertical_offset_spaces = 0.0,
@@ -317,15 +317,15 @@ local function compute_staff_geometry(w, h, clef_glyph, layout_defaults, units_p
 	if not M.MAX_CLEF_SPAN_SPACES then
 		local max_span = 0
 		for _, cfg in pairs(M.CLEF_CONFIGS) do
-			local span = clef_span_spaces(cfg.glyph, M.DEFAULT_CLEF_LAYOUT.fallback_span_spaces)
+			local span = clef_span_spaces(cfg.glyph, layout_defaults.fallback_span_spaces)
 			if span and span > max_span then
 				max_span = span
 			end
 		end
-		M.MAX_CLEF_SPAN_SPACES = (max_span > 0) and max_span or M.DEFAULT_CLEF_LAYOUT.fallback_span_spaces
+		M.MAX_CLEF_SPAN_SPACES = (max_span > 0) and max_span or layout_defaults.fallback_span_spaces
 	end
 
-	local current_clef_span = clef_span_spaces(clef_glyph, M.DEFAULT_CLEF_LAYOUT.fallback_span_spaces)
+	local current_clef_span = clef_span_spaces(clef_glyph, layout_defaults.fallback_span_spaces)
 	local staff_span_spaces = 4
 	local clef_padding_spaces = layout_defaults.padding_spaces
 
@@ -531,22 +531,22 @@ local function record_canvas_violation(ctx, glyph_name, bounds)
 end
 
 -- ─────────────────────────────────────
-local function glyph_width(ctx, glyph_name)
-	local bbox = ctx.glyph.bboxes[glyph_name]
-	if not bbox or not bbox.bBoxSW or not bbox.bBoxNE then
-		return nil
-	end
-
-	local units_per_space = ctx.glyph.units_per_space
-	local scale = ctx.glyph.scale
-
-	-- Convert bounding box x-coords to units
-	local sw_x_units = (bbox.bBoxSW[1] or 0) * units_per_space
-	local ne_x_units = (bbox.bBoxNE[1] or 0) * units_per_space
-
-	-- Width in pixels
-	return (ne_x_units - sw_x_units) * scale
-end
+-- local function glyph_width(ctx, glyph_name)
+-- 	local bbox = ctx.glyph.bboxes[glyph_name]
+-- 	if not bbox or not bbox.bBoxSW or not bbox.bBoxNE then
+-- 		return nil
+-- 	end
+--
+-- 	local units_per_space = ctx.glyph.units_per_space
+-- 	local scale = ctx.glyph.scale
+--
+-- 	-- Convert bounding box x-coords to units
+-- 	local sw_x_units = (bbox.bBoxSW[1] or 0) * units_per_space
+-- 	local ne_x_units = (bbox.bBoxNE[1] or 0) * units_per_space
+--
+-- 	-- Width in pixels
+-- 	return (ne_x_units - sw_x_units) * scale
+-- end
 
 -- ─────────────────────────────────────
 local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y, fill_color, options)
@@ -636,17 +636,17 @@ local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y
 		end
 	end
 
-	local t = {
-		min_x = min_x_px,
-		max_x = max_x_px,
-		width = width_px,
-		height = (ne_y_units - sw_y_units) * glyph_scale,
-		sw_y_units = sw_y_units,
-		ne_y_units = ne_y_units,
-		translate_y_units = translate_y_units,
-		absolute_min_y = abs_min_y,
-		absolute_max_y = abs_max_y,
-	}
+	-- local t = {
+	-- 	min_x = min_x_px,
+	-- 	max_x = max_x_px,
+	-- 	width = width_px,
+	-- 	height = (ne_y_units - sw_y_units) * glyph_scale,
+	-- 	sw_y_units = sw_y_units,
+	-- 	ne_y_units = ne_y_units,
+	-- 	translate_y_units = translate_y_units,
+	-- 	absolute_min_y = abs_min_y,
+	-- 	absolute_max_y = abs_max_y,
+	-- }
 
 	-- pd.post("---" .. glyph_name .. "---")
 
@@ -757,9 +757,9 @@ local function compute_time_signature_metrics(ctx, numerator, denominator)
 		local value_str = ensure_string(value)
 		for ch in value_str:gmatch("%d") do
 			local glyph_name = "timeSig" .. ch
-			local glyph_width = glyph_width_px(ctx, glyph_name) or staff_spacing
-			digits[#digits + 1] = { char = ch, glyph = glyph_name, width = glyph_width }
-			total_width = total_width + (glyph_width or 0)
+			local gwidth = glyph_width_px(ctx, glyph_name) or staff_spacing
+			digits[#digits + 1] = { char = ch, glyph = glyph_name, width = gwidth }
+			total_width = total_width + (gwidth or 0)
 		end
 		return digits, total_width
 	end
@@ -1142,7 +1142,6 @@ local function resolve_flag_glyph(note, direction)
 	local value = note.value
 	local min_figure = note.min_figure
 	local _, figure = compute_figure(value, min_figure)
-	print(value, min_figure, figure)
 
 	local glyph = "flag" .. tostring(math.tointeger(figure))
 	if figure == 32 then
@@ -1414,7 +1413,7 @@ local function record_tuplet_beam_note(state, chord, note, stem_metrics, directi
 end
 
 -- ─────────────────────────────────────
-local function record_tuplet_rest_break(state, rest)
+local function record_tuplet_break(state, rest)
 	if not rest then
 		return
 	end
@@ -1582,7 +1581,7 @@ local function draw_incoming_ties(state, chord)
 		local queue = key and active[key]
 		if queue and #queue > 0 then
 			local entry = table.remove(queue, 1)
-			if #queue == 0 then
+			if #queue == 0 and key then
 				active[key] = nil
 			end
 			local orientation = entry.orientation or tie_orientation_for_note(entry.start_note or note)
@@ -1742,13 +1741,13 @@ local function emit_beam_strip(state, start_x, end_x, anchor_y, align_y)
 	end
 	local ctx = state.ctx
 	local metrics = get_beam_glyph_metrics(ctx)
-	local glyph_width = math.abs(metrics.width or 0)
-	if glyph_width <= 0 then
+	local gwidth = math.abs(metrics.width or 0)
+	if gwidth <= 0 then
 		return state
 	end
 	local span = end_x - start_x
-	local segments = math.max(1, math.ceil(span / math.max(glyph_width * 0.9, 1e-3)))
-	local effective = math.max(0, span - glyph_width)
+	local segments = math.max(1, math.ceil(span / math.max(gwidth * 0.9, 1e-3)))
+	local effective = math.max(0, span - gwidth)
 	for i = 0, segments - 1 do
 		local ratio = (segments == 1) and 0 or (i / (segments - 1))
 		local anchor_x = start_x + (effective * ratio)
@@ -2684,15 +2683,31 @@ local function prepare_chord_notes(state)
 end
 
 -- ─────────────────────────────────────
-local function draw_tuplet_glyph(state, glyph_name, x, y, align_y)
+local function draw_tuplet_glyph(state, glyph_name, x, y, align_y, flip_vertical)
 	utils.log("draw_tuplet_glyph", 2)
 	if not glyph_name or not x or not y then
 		return state
 	end
+
 	local chunk = glyph_group(state.ctx, glyph_name, x, y, "center", align_y or "center", "#000000")
 	if chunk then
+		if flip_vertical then
+			local glyph_width = 318 -- replace with actual glyph width if different
+			local cx = x -- keep horizontal centered at x
+			local cy = y -- baseline
+			-- flip around glyph center horizontally
+			chunk = string.format(
+				'<g transform="translate(%.3f %.3f) scale(1 -1) translate(-%.3f -%.3f)">%s</g>',
+				cx,
+				cy,
+				cx,
+				cy,
+				chunk
+			)
+		end
 		state.tuplet_svg[#state.tuplet_svg + 1] = "  " .. chunk
 	end
+
 	return state
 end
 
@@ -2790,8 +2805,11 @@ render_tuplet_draw_request = function(state, request)
 
 	-- Draw tuplet brackets and label at the calculated position
 	local bracket_align_y = (direction == "down") and "top" or "bottom"
-	state = draw_tuplet_glyph(state, "textTupletBracketStartLongStem", request.start_x, y, bracket_align_y)
-	state = draw_tuplet_glyph(state, "textTupletBracketEndLongStem", request.end_x, y, bracket_align_y)
+	local flip = (direction == "down")
+	local flip = (direction == "down")
+	state = draw_tuplet_glyph(state, "textTupletBracketStartLongStem", request.start_x, y, bracket_align_y, flip)
+	state = draw_tuplet_glyph(state, "textTupletBracketEndLongStem", request.end_x, y, bracket_align_y, flip)
+
 	state = render_tuplet_label_at(state, request.label, request.start_x, request.end_x, y)
 
 	if geometry then
@@ -2915,7 +2933,7 @@ local function finalize_tuplet(state, tuplet)
 			end
 		end
 		state.max_nested_tuplet_depth = max_nested
-		pd.post(max_nested)
+		-- pd.post(max_nested)
 	end
 
 	local requires_geometry = false
@@ -3118,7 +3136,7 @@ local function render_ledgers(state)
 			local extra_each_side = (state.staff_spacing * 0.8) * 0.5
 			local left = center_x - (head_width_px * 0.5) - state.ledger_cfg.extension - extra_each_side
 			local right = center_x + (head_width_px * 0.5) + state.ledger_cfg.extension + extra_each_side
-			local len = right - left
+			-- local len = right - left
 			if (not state.chord_rightmost) or (right > state.chord_rightmost) then
 				state.chord_rightmost = right
 			end
@@ -3241,8 +3259,6 @@ local function render_notes_and_chords(state)
 	utils.log("render_notes_and_chords", 2)
 	local chord = state.current_chord
 	local chord_x = state.current_chord_x
-
-	state.current_chord = chord
 	state = prepare_chord_notes(state)
 
 	local skip_accidentals = state.skip_accidentals
@@ -3326,7 +3342,7 @@ local function render_rests(state)
 		center = (rest_left + rest_right) * 0.5,
 	}
 
-	record_tuplet_rest_break(state, chord)
+	record_tuplet_break(state, chord)
 
 	return state
 end
@@ -3409,17 +3425,25 @@ local function render_elements(state)
 	state.max_steps_note = nil
 	state.recorded_bounds = nil
 
+	-- chord element
 	if chord and chord.notes and #chord.notes > 0 then
 		if chord_is_tie_target(state, chord) then
 			state.skip_accidentals = true
 		end
 		state = render_notes_and_chords(state)
 		state = resolve_ties_for_chord(state)
+
+		local _, final_figure = compute_figure(chord.value, chord.min_figure)
+		if final_figure < 8 then
+			record_tuplet_break(state, chord)
+		end
+
+	-- rest element
 	elseif chord and chord.is_rest then
 		state = render_rests(state)
 		state = clear_all_ties(state)
 	else
-		state.skip_accidentals = nil
+		error("Element is not chord or rest")
 	end
 
 	-- Handle common bounds and layout calculations
@@ -4212,8 +4236,12 @@ function Measure:new(time_sig, tree, number)
 	obj.entries = {}
 	obj.measure_sum = measure_sum
 	obj:get_measure_min_fig()
+
+	if obj:is_tuplet() then
+		obj.tree = { { obj.time_sig[1], tree } }
+	end
+
 	obj:build()
-	obj:is_tuplet()
 	return obj
 end
 -- ─────────────────────────────────────
@@ -4384,13 +4412,31 @@ function Measure:get_measure_min_fig()
 	self.min_figure = utils.floor_pow2(fig)
 end
 
--- ─────────────────────────────────────
 local function assign_tuplet_directions(chords, tuplets, clef_key)
 	utils.log("assign_tuplet_directions", 2)
 	local lookup = {}
 	if not chords or not tuplets then
 		return lookup
 	end
+
+	local function apply_direction_to_chords(tup, direction)
+		if not tup or not direction then
+			return
+		end
+		local start_index = math.tointeger(tup.start_index)
+		local end_index = math.tointeger(tup.end_index)
+		if not start_index or not end_index or start_index < 1 or end_index < start_index then
+			return
+		end
+		for idx = start_index, math.min(end_index, #chords) do
+			local chord = chords[idx]
+			if chord and chord.tuplet_id == tup.id then
+				chord.forced_stem_direction = direction
+			end
+		end
+	end
+
+	local parent_lookup = {}
 	for _, chord in ipairs(chords) do
 		if chord.parent_tuplet and chord.parent_tuplet.id then
 			chord.tuplet_id = chord.parent_tuplet.id
@@ -4400,6 +4446,9 @@ local function assign_tuplet_directions(chords, tuplets, clef_key)
 		local tid = tup.id
 		local start_index = math.tointeger(tup.start_index)
 		local end_index = math.tointeger(tup.end_index)
+		if tid and tup.parent and tup.parent.id then
+			parent_lookup[tid] = tup.parent.id
+		end
 		if tid and start_index and end_index and start_index > 0 and end_index >= start_index then
 			local up_count, down_count = 0, 0
 			for idx = start_index, math.min(end_index, #chords) do
@@ -4417,12 +4466,25 @@ local function assign_tuplet_directions(chords, tuplets, clef_key)
 				local forced = (down_count > up_count) and "down" or "up"
 				tup.forced_direction = forced
 				lookup[tid] = forced
-				for idx = start_index, math.min(end_index, #chords) do
-					local chord = chords[idx]
-					if chord and chord.tuplet_id == tid then
-						chord.forced_stem_direction = forced
-					end
-				end
+				apply_direction_to_chords(tup, forced)
+			end
+		end
+	end
+
+	local safety = #tuplets + 5
+	local changed = true
+	while changed and safety > 0 do
+		changed = false
+		safety = safety - 1
+		for _, tup in ipairs(tuplets) do
+			local tid = tup.id
+			local parent_id = tid and parent_lookup[tid]
+			local parent_dir = parent_id and lookup[parent_id]
+			if tid and parent_dir and lookup[tid] ~= parent_dir then
+				lookup[tid] = parent_dir
+				tup.forced_direction = parent_dir
+				apply_direction_to_chords(tup, parent_dir)
+				changed = true
 			end
 		end
 	end
@@ -4540,7 +4602,9 @@ function Voice:new(material)
 							instantiate_chord_blueprint(last_blueprint, { notehead = element.notehead }, element)
 						end
 					end
-				elseif element.notes and #element.notes > 0 then
+				end
+
+				if element.notes and #element.notes > 0 then
 					last_blueprint = chord_to_blueprint(element)
 					if element.is_tied then
 						pending_tie_blueprint = last_blueprint
@@ -4568,10 +4632,19 @@ function Score:new(w, h)
 end
 
 -- ─────────────────────────────────────
+function Score:set_vertical_padding(padding)
+	self.default_clef_layout.padding_spaces = padding
+end
+
+-- ─────────────────────────────────────
 function Score:set_material(material)
 	self.render_tree = material.render_tree
 	self.clef_name_or_key = material.clef
 	self.bpm = material.bpm
+
+	if self.default_clef_layout == nil then
+		self.default_clef_layout = M.DEFAULT_CLEF_LAYOUT
+	end
 
 	if not self.render_tree then
 		material.tree = {}
@@ -4592,7 +4665,7 @@ function Score:set_material(material)
 	local clef_cfg = resolve_clef_config(self.clef_name_or_key)
 	clef_cfg.key = clef_cfg.key or tostring(self.clef_name_or_key or "g")
 	local units_em = units_per_em_value()
-	local geom = compute_staff_geometry(self.w, self.h, clef_cfg.glyph, M.DEFAULT_CLEF_LAYOUT, units_em)
+	local geom = compute_staff_geometry(self.w, self.h, clef_cfg.glyph, self.default_clef_layout, units_em)
 	assert(geom, "Could not compute staff geometry")
 
 	-- Reference values for staff mapping (OM: bottom reference and anchor)
@@ -4626,9 +4699,9 @@ function Score:set_material(material)
 		},
 		clef = {
 			name = clef_cfg.glyph,
-			anchor_offset = M.DEFAULT_CLEF_LAYOUT.horizontal_offset_spaces,
-			spacing_after = M.DEFAULT_CLEF_LAYOUT.spacing_after,
-			vertical_offset_spaces = M.DEFAULT_CLEF_LAYOUT.vertical_offset_spaces,
+			anchor_offset = self.default_clef_layout.horizontal_offset_spaces,
+			spacing_after = self.default_clef_layout.spacing_after,
+			vertical_offset_spaces = self.default_clef_layout.vertical_offset_spaces,
 			padding_spaces = geom.clef_padding_spaces,
 			config = clef_cfg,
 		},

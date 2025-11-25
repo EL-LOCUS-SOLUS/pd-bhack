@@ -33,6 +33,7 @@ function b_voice:initialize(_, args)
 	self.current_measure = 1
 	self.entry = nil
 	self.previous_entry = nil
+	self.midiplayback = true
 
 	-- Initialize Score
 	self.Score = bhack.score.Score:new(self.width, self.height)
@@ -49,35 +50,42 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:midiout()
-	if
-		self.previous_entry ~= nil
-		and self.previous_entry.chord
-		and not self.previous_entry.chord.is_tied
-		and not self.previous_entry.chord.is_rest
-	then
-		for i = 1, #self.previous_entry.chord.notes do
-			local midi = self.previous_entry.chord.notes[i].midi
-			self:outlet(1, "list", { midi, 0 })
-		end
-	end
-
-	if self.entry ~= nil and self.entry.chord and not self.entry.is_rest then
-		if self.previous_entry == nil or not (self.previous_entry.chord and self.previous_entry.chord.is_tied) then
-			for i = 1, #self.entry.chord.notes do
-				local midi = self.entry.chord.notes[i].midi
-				self:outlet(1, "list", { midi, 60 })
+	if self.midiplayback then
+		if
+			self.previous_entry ~= nil
+			and self.previous_entry.chord
+			and not self.previous_entry.chord.is_tied
+			and not self.previous_entry.chord.is_rest
+		then
+			for i = 1, #self.previous_entry.chord.notes do
+				local midi = self.previous_entry.chord.notes[i].midi
+				self:outlet(1, "list", { midi, 0 })
 			end
 		end
+
+		if self.entry ~= nil and self.entry.chord and not self.entry.is_rest then
+			if self.previous_entry == nil or not (self.previous_entry.chord and self.previous_entry.chord.is_tied) then
+				for i = 1, #self.entry.chord.notes do
+					local midi = self.entry.chord.notes[i].midi
+					self:outlet(1, "list", { midi, 60 })
+				end
+			end
+		end
+	else
+		local llllnew = bhack.llll:new_fromtable(self, self.entry.chord)
+		llllnew:output(1)
 	end
 end
 
 -- ─────────────────────────────────────
 function b_voice:clear_playbar()
-	if not self.previous_entry.chord.is_rest then
-		for i = 1, #self.previous_entry.chord.notes do
-			local pitchname = self.previous_entry.chord.notes[i].raw
-			local midi = n2m(pitchname)
-			self:outlet(1, "list", { midi, 0 })
+	if self.midiplayback then
+		if self.previous_entry and not self.previous_entry.chord.is_rest then
+			for i = 1, #self.previous_entry.chord.notes do
+				local pitchname = self.previous_entry.chord.notes[i].raw
+				local midi = n2m(pitchname)
+				self:outlet(1, "list", { midi, 0 })
+			end
 		end
 	end
 
@@ -231,6 +239,20 @@ function b_voice:in_1_size(args)
 end
 
 -- ─────────────────────────────────────
+function b_voice:in_1_fontsize(args)
+	local size = 1 / args[1]
+
+	self.Score:set_vertical_padding(size)
+	self.Score:set_material({
+		clef = self.current_clef_key,
+		render_tree = true,
+		tree = self.rhythm_tree_spec,
+		chords = self.CHORDS,
+		bpm = self.bpm,
+	})
+	self:repaint()
+end
+-- ─────────────────────────────────────
 function b_voice:in_1_clef(args)
 	local raw = args and args[1]
 	local key = raw and tostring(raw):lower() or ""
@@ -296,6 +318,12 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:in_1_play()
+	if self.is_playing then
+		self.last_onset = -1
+		self.playbar_position = -1
+		return
+	end
+
 	self.onsets, self.last_onset = self.Score:get_onsets()
 	self.last_onset = -1
 	self.playbar_position = -1
@@ -315,6 +343,17 @@ function b_voice:in_2_llll(atoms)
 		error("llll must be of depth 2 for chords/arpeggios")
 	else
 		self.CHORDS = llll:get_table()
+	end
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_1_midiplayback(atoms)
+	if atoms[1] > 0 then
+		self.midiplayback = true
+		pd.post("midiplayback on")
+	else
+		self.midiplayback = false
+		pd.post("midiplayback off")
 	end
 end
 
@@ -349,7 +388,7 @@ function b_voice:paint(g)
 
 	local errors = self.Score:get_errors()
 	if #errors > 0 then
-		self:error("Seems that the score is small for the score")
+		-- self:error("Seems that the score is small for the score")
 	end
 
 	g:set_color(247, 247, 247)

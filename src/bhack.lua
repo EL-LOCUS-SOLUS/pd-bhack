@@ -33,13 +33,15 @@ function M.get_llll_fromid(self, id)
 
 	local function deep_copy_table(obj)
 		if type(obj) ~= "table" then
-			return obj
+			local copy = obj
+			return copy
+		else
+			local copy = {}
+			for k, v in pairs(obj) do
+				copy[k] = v
+			end
+			return copy
 		end
-		local copy = {}
-		for k, v in pairs(obj) do
-			copy[k] = deep_copy_table(v)
-		end
-		return copy
 	end
 
 	local cloned_table = deep_copy_table(original:get_table())

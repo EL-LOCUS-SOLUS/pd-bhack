@@ -14,18 +14,19 @@ function b_topd:in_1_llll(atoms)
 	local id = atoms[1]
 	local llll = bhack.get_llll_fromid(self, id):get_table()
 	if llll == nil then
-		self:bhack_error("llll not found")
+		error("llll not found")
 		return
 	end
 
-	if type(llll) == "table" then
-		for _, v in pairs(llll) do
-			if type(v) == "table" then
-				error("[" .. self._name .. "] Nested llll tables are not supported")
-			end
-		end
+	if bhack.utils.table_depth(llll) > 1 then
+		error("Impossible to convert table to Pd")
 	end
-	self:outlet(1, "list", { llll })
+
+	if type(llll) ~= "table" then
+		self:outlet(1, "list", { llll })
+	else
+		self:outlet(1, "list", llll)
+	end
 end
 
 -- ─────────────────────────────────────
