@@ -1,4 +1,4 @@
-#N canvas 533 86 746 601 10;
+#N canvas 0 0 640 480 10;
 #X declare -lib else;
 #X obj 528 380 declare -lib else;
 #X obj 29 119 bhack.define;
