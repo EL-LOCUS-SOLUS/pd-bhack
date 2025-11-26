@@ -4912,14 +4912,17 @@ function Score:export_voice_musicxml(path)
 			)
 			table.insert(xml_lines, "</attributes>")
 		end
-        previous_timesig = time_sig
+		previous_timesig = time_sig
 
-		-- Note by Note
+		-- Element (rest/note/chord) by element
 		for _, entry in ipairs(measure.entries or {}) do
 			if entry.is_rest then
 				table.insert(xml_lines, "<note>")
 				table.insert(xml_lines, "<rest/>")
 				table.insert(xml_lines, string.format("<type>%s</type>", resolve_musicxml_type(entry)))
+				for _ = 1, entry.dot_level do
+					table.insert(xml_lines, "<dot/>")
+				end
 				table.insert(xml_lines, "</note>")
 			else
 				local first_note = true
@@ -4950,6 +4953,9 @@ function Score:export_voice_musicxml(path)
 								acc
 							)
 						)
+					end
+					for _ = 1, entry.dot_level do
+						table.insert(xml_lines, "<dot/>")
 					end
 
 					table.insert(xml_lines, "</note>")
