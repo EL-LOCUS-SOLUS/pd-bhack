@@ -4926,7 +4926,9 @@ function Score:export_voice_musicxml(path)
 				-- tuplet
 				if entry.parent_tuplet then
 					if entry.parent_tuplet.depth > 1 then
-						error("Just one level tuplets are supported")
+						error(
+							"Nested tuplets are not supported by Musescore, check https://github.com/musescore/MuseScore/pull/30869"
+						)
 					end
 					local label = entry.parent_tuplet.label_string
 					local pos = label:find(":")
@@ -4978,7 +4980,9 @@ function Score:export_voice_musicxml(path)
 					-- tuplet
 					if entry.parent_tuplet then
 						if entry.parent_tuplet.depth > 1 then
-							error("Just one level tuplets are supported")
+							error(
+								"Nested tuplets are not supported by Musescore, check https://github.com/musescore/MuseScore/pull/30869"
+							)
 						end
 						local label = entry.parent_tuplet.label_string
 						local pos = label:find(":")
