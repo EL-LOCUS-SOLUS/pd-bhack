@@ -4923,6 +4923,24 @@ function Score:export_voice_musicxml(path)
 				for _ = 1, entry.dot_level do
 					table.insert(xml_lines, "<dot/>")
 				end
+				-- tuplet
+				if entry.parent_tuplet then
+					if entry.parent_tuplet.depth > 1 then
+						error("Just one level tuplets are supported")
+					end
+					local label = entry.parent_tuplet.label_string
+					local pos = label:find(":")
+					local a = label:sub(1, pos - 1)
+					local b = label:sub(pos + 1)
+					table.insert(
+						xml_lines,
+						string.format(
+							"<time-modification><actual-notes>%s</actual-notes><normal-notes>%s</normal-notes></time-modification>",
+							a,
+							b
+						)
+					)
+				end
 				table.insert(xml_lines, "</note>")
 			else
 				local first_note = true
@@ -4956,6 +4974,24 @@ function Score:export_voice_musicxml(path)
 					end
 					for _ = 1, entry.dot_level do
 						table.insert(xml_lines, "<dot/>")
+					end
+					-- tuplet
+					if entry.parent_tuplet then
+						if entry.parent_tuplet.depth > 1 then
+							error("Just one level tuplets are supported")
+						end
+						local label = entry.parent_tuplet.label_string
+						local pos = label:find(":")
+						local a = label:sub(1, pos - 1)
+						local b = label:sub(pos + 1)
+						table.insert(
+							xml_lines,
+							string.format(
+								"<time-modification><actual-notes>%s</actual-notes><normal-notes>%s</normal-notes></time-modification>",
+								a,
+								b
+							)
+						)
 					end
 
 					table.insert(xml_lines, "</note>")
