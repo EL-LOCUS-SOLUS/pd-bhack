@@ -2,12 +2,21 @@ local M = {}
 M.__index = M
 
 -- ─────────────────────────────────────
+local function random_string(len)
+    local res = {}
+    for i = 1, len do
+        res[i] = string.format("%x", math.random(0, 15))
+    end
+    return table.concat(res)
+end
+
+-- ─────────────────────────────────────
 function M:new(pdobj, atoms)
 	local obj = setmetatable({}, self)
 	obj.atoms = atoms or {}
 	obj.table = self:table_from_atoms(atoms)
 	obj.pdobj = pdobj
-	pdobj._llll_id = tostring({}):match("0x[%x]+")
+	obj.pdobj._llll_id = random_string(8)
 	obj.depth = self:get_depth(obj.table)
 	return obj
 end
@@ -17,7 +26,7 @@ function M:new_fromtable(pdobj, t)
 	local obj = setmetatable({}, self)
 	obj.table = t
 	obj.pdobj = pdobj
-	pdobj._llll_id = tostring({}):match("0x[%x]+")
+	obj.pdobj._llll_id = random_string(8)
 	obj.depth = self:get_depth(obj.table)
 	return obj
 end
@@ -27,7 +36,7 @@ function M:new_fromid(pdobj, id)
 	local obj = setmetatable({}, self)
 	obj.atoms = {}
 	obj.table = _G.bhack_outlets[id]
-	obj.pdobj = pdobj
+	obj.pdobj._llll_id = random_string(8)
 	obj._id = tostring({}):match("0x[%x]+")
 	return obj
 end
