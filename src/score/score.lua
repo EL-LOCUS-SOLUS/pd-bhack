@@ -1725,6 +1725,39 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 	local staff = state.ctx and state.ctx.staff or {}
 	local spacing = state.staff_spacing or staff.spacing or DEFAULT_SPACING
 	state.tuplet_primary_beam_line = state.tuplet_primary_beam_line or { up = nil, down = nil }
+
+	-- Compute the extreme existing stem tip for this bucket.
+	-- This is crucial because we can extend stems, but we cannot shorten already-rendered stem glyphs.
+	-- Therefore the chosen beam line must never be closer to the noteheads than the longest stem.
+	local function bucket_extreme_stem_tip_y(direction)
+		local extreme
+		if direction == "down" then
+			extreme = -math.huge
+			for _, entry in ipairs(bucket.notes or {}) do
+				if entry and not entry.is_break and entry.stem_metrics and entry.stem_metrics.bottom_y then
+					extreme = math.max(extreme, entry.stem_metrics.bottom_y)
+				elseif entry and entry.is_break and entry.y then
+					extreme = math.max(extreme, entry.y)
+				end
+			end
+			if extreme == -math.huge then
+				extreme = (staff.center or 0) + (spacing * 3)
+			end
+		else
+			extreme = math.huge
+			for _, entry in ipairs(bucket.notes or {}) do
+				if entry and not entry.is_break and entry.stem_metrics and entry.stem_metrics.top_y then
+					extreme = math.min(extreme, entry.stem_metrics.top_y)
+				elseif entry and entry.is_break and entry.y then
+					extreme = math.min(extreme, entry.y)
+				end
+			end
+			if extreme == math.huge then
+				extreme = (staff.center or 0) - (spacing * 3)
+			end
+		end
+		return extreme
+	end
 	local medium_steps = 4
 	local min_steps = bucket.min_steps or medium_steps
 	local max_steps = bucket.max_steps or medium_steps
@@ -1775,18 +1808,48 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 	local cached_baseline = state.tuplet_primary_beam_line[direction_key]
 	if cached_baseline then
 		beam_line_y = cached_baseline
+	end
+
+	-- Clamp beam line so it never shortens any pre-rendered stem.
+	local extreme_y = bucket_extreme_stem_tip_y(direction)
+	if direction == "down" then
+		beam_line_y = math.max(beam_line_y, extreme_y)
+		-- Cached baseline for down-stems may only move downward (increasing Y).
+		state.tuplet_primary_beam_line[direction_key] = math.max(state.tuplet_primary_beam_line[direction_key] or beam_line_y, beam_line_y)
 	else
-		state.tuplet_primary_beam_line[direction_key] = beam_line_y
+		beam_line_y = math.min(beam_line_y, extreme_y)
+		-- Cached baseline for up-stems may only move upward (decreasing Y).
+		local current = state.tuplet_primary_beam_line[direction_key]
+		state.tuplet_primary_beam_line[direction_key] = current and math.min(current, beam_line_y) or beam_line_y
 	end
 	bucket.beam_line_y = beam_line_y
+
+	-- Stems must reach the OUTERMOST beam level (last level), not just the first.
+	local beam_gap = spacing * 0.18
+	local levels = math.max(1, bucket.max_level or 1)
+	local outer_attachment_y
+	if direction == "down" then
+		outer_attachment_y = beam_line_y + ((levels - 1) * (beam_height + beam_gap))
+	else
+		outer_attachment_y = beam_line_y - ((levels - 1) * (beam_height + beam_gap))
+	end
+
 	for _, entry in ipairs(bucket.notes or {}) do
 		if entry.is_break then
+			-- Breaks are positioned at the first beam level.
 			entry.y = beam_line_y
 		else
 			local current_y = entry.y
-			if current_y and math.abs(current_y - beam_line_y) > 0.01 then
-				extend_stem_for_tuplet(state, entry.note, entry.stem_metrics, bucket.direction, current_y, beam_line_y)
-				entry.y = beam_line_y
+			if current_y then
+				local eps = 0.01
+				-- Only extend stems (never attempt to shorten).
+				if (direction == "down" and current_y < (outer_attachment_y - eps))
+					or (direction ~= "down" and current_y > (outer_attachment_y + eps)) then
+					extend_stem_for_tuplet(state, entry.note, entry.stem_metrics, direction, current_y, outer_attachment_y)
+					entry.y = outer_attachment_y
+				else
+					entry.y = current_y
+				end
 			end
 		end
 	end
@@ -1884,62 +1947,29 @@ local function render_tuplet_beams(state, tuplet)
 	end
 	local beam_gap = (state.staff_spacing or 0) * 0.18
 	local direction = bucket.direction or "up"
-	local align_y = (direction == "down") and "bottom" or "top"
+	-- IMPORTANT: `textCont8thBeamLongStem` is a filled beam rectangle.
+	-- We always anchor glyph placement by the beam's TOP edge, and shift Y when we want the stem
+	-- to meet the BEAM'S BOTTOM edge instead.
+	local align_y = "top"
 
-	-- Find the exact stem tip positions
-	local extreme_y
-	if direction == "down" then
-		-- For down stems, use the bottom_y (tip of the stem pointing down)
-		extreme_y = -math.huge
-		for _, entry in ipairs(bucket.notes) do
-			if entry.stem_metrics and entry.stem_metrics.bottom_y then
-				local bottom_y = entry.stem_metrics.bottom_y
-				if bottom_y > extreme_y then
-					extreme_y = bottom_y
-				end
-			elseif entry.is_break then
-				-- For rest breaks, use the entry's y position
-				local break_y = entry.y
-				if break_y and break_y > extreme_y then
-					extreme_y = break_y
-				end
-			end
-		end
-		-- If no valid positions found, use fallback
-		if extreme_y == -math.huge then
-			extreme_y = (state.ctx and state.ctx.staff and state.ctx.staff.center) or (0 + (state.staff_spacing * 3))
-		end
-	else
-		-- For up stems, use the top_y (tip of the stem pointing up)
-		extreme_y = math.huge
-		for _, entry in ipairs(bucket.notes) do
-			if entry.stem_metrics and entry.stem_metrics.top_y then
-				local top_y = entry.stem_metrics.top_y
-				if top_y < extreme_y then
-					extreme_y = top_y
-				end
-			elseif entry.is_break then
-				-- For rest breaks, use the entry's y position
-				local break_y = entry.y
-				if break_y and break_y < extreme_y then
-					extreme_y = break_y
-				end
-			end
-		end
-		-- If no valid positions found, use fallback
-		if extreme_y == math.huge then
-			extreme_y = (state.ctx and state.ctx.staff and state.ctx.staff.center) or (0 - (state.staff_spacing * 3))
-		end
+	-- Beam rendering must be based on the computed beam line (first level), not on stem tips.
+	local base_line_y = bucket.beam_line_y
+	if not base_line_y then
+		base_line_y = (state.ctx and state.ctx.staff and state.ctx.staff.center) or 0
 	end
-
-	if direction == "down" then
-		tuplet.beam_lowest_pos = extreme_y
-	else
-		tuplet.beam_highest_pos = extreme_y
-	end
-
-	local base_line_y = extreme_y -- Use the exact stem tip position
 	local max_level = bucket.max_level or 0
+	-- Store the *outer* edge of the whole beam stack for tuplet label/bracket clearance.
+	-- Under the current anchoring rule:
+	--  - up-stems attach to the TOP edge of the beam
+	--  - down-stems attach to the BOTTOM edge of the beam
+	local levels = math.max(1, max_level)
+	if direction == "down" then
+		-- Bottom edge of the bottom-most beam
+		tuplet.beam_lowest_pos = base_line_y + ((levels - 1) * (beam_height + beam_gap))
+	else
+		-- Top edge of the top-most beam
+		tuplet.beam_highest_pos = base_line_y - ((levels - 1) * (beam_height + beam_gap))
+	end
 	local notes = bucket.notes
 
 	for level = 1, max_level do
@@ -1952,14 +1982,21 @@ local function render_tuplet_beams(state, tuplet)
 			local first_entry = notes[run_start]
 			local last_entry = notes[run_end]
 			local base_y = base_line_y
-			if run_length == 1 then
-				base_y = (first_entry and first_entry.y) or base_line_y
-			end
 			local level_y
 			if direction == "down" then
-				level_y = base_y - ((level - 1) * (beam_height + beam_gap))
-			else
+				-- Down-stem beam stacks extend away from noteheads (downwards).
 				level_y = base_y + ((level - 1) * (beam_height + beam_gap))
+			else
+				-- Up-stem beam stacks extend away from noteheads (upwards).
+				level_y = base_y - ((level - 1) * (beam_height + beam_gap))
+			end
+
+			-- Anchor adjustment (anchoring by TOP edge):
+			-- - For up stems, the stem meets the TOP edge => no shift.
+			-- - For down stems, the stem meets the BOTTOM edge => shift TOP edge up by one beam height.
+			local beam_anchor_y = level_y
+			if direction == "down" then
+				beam_anchor_y = level_y - beam_height
 			end
 			if run_length >= 2 then
 				local start_x = first_entry and first_entry.x or 0
@@ -1970,7 +2007,7 @@ local function render_tuplet_beams(state, tuplet)
 				if end_x <= start_x then
 					end_x = start_x + math.max(state.staff_spacing or 0.5, 0.5)
 				end
-				state = emit_beam_strip(state, start_x, end_x, level_y, align_y)
+				state = emit_beam_strip(state, start_x, end_x, beam_anchor_y, align_y)
 			else
 				local stub_entry = first_entry
 				local neighbor_left = closest_neighbor(notes, run_start, -1)
@@ -1984,7 +2021,7 @@ local function render_tuplet_beams(state, tuplet)
 				if left_distance < right_distance then
 					direction_hint = "left"
 				end
-				state = emit_beam_stub(state, anchor_x, level_y, align_y, direction_hint)
+				state = emit_beam_stub(state, anchor_x, beam_anchor_y, align_y, direction_hint)
 			end
 			run_start, run_end = nil, nil
 		end
