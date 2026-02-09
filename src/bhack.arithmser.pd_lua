@@ -23,7 +23,7 @@ function b_arithm:in_1_bang()
 	for i = self.first, self.last, self.step do
 		table.insert(result, i)
 	end
-	local out_llll = bhack.llll:new_fromtable(self, result)
+	local out_llll = bhack.dddd:new_fromtable(self, result)
 	out_llll:output(1)
 end
 

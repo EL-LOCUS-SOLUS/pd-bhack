@@ -24,7 +24,7 @@ function b_nth:in_1_llll(atoms)
 		return
 	end
 
-	local nth_llll = bhack.llll:new_fromtable(self, llll:get_table()[self.nth])
+	local nth_llll = bhack.dddd:new_fromtable(self, llll:get_table()[self.nth])
 	if nth_llll == nil then
 		self:bhack_error("nth llll not found")
 		return

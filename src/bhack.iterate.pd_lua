@@ -18,13 +18,13 @@ function iterate:in_1_llll(atoms)
 		return
 	end
 
-	bhack.llll:new_fromtable(self, { "begin" }):output(1)
+	bhack.dddd:new_fromtable(self, { "begin" }):output(1)
 	local t = llll:get_table()
 	for i, v in ipairs(t) do
-		local llll_i = bhack.llll:new_fromtable(self, v)
+		local llll_i = bhack.dddd:new_fromtable(self, v)
 		llll_i:output(2)
 	end
-	bhack.llll:new_fromtable(self, { "end" }):output(1)
+	bhack.dddd:new_fromtable(self, { "end" }):output(1)
 end
 
 -- ─────────────────────────────────────

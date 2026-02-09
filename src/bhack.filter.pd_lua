@@ -27,7 +27,7 @@ function b_filter:in_1_llll(atoms)
 
 	local filtered_var = t[self.filter_name]
 	if filtered_var ~= nil then
-		local llllnew = bhack.llll:new_fromtable(self, filtered_var)
+		local llllnew = bhack.dddd:new_fromtable(self, filtered_var)
 		llllnew:output(1)
 	end
 end

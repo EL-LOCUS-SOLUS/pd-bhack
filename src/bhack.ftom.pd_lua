@@ -38,7 +38,7 @@ function f2m_llll:in_1_llll(atoms)
 		converted = midi_note
 	end
 
-	local out_llll = bhack.llll:new_fromtable(self, converted)
+	local out_llll = bhack.dddd:new_fromtable(self, converted)
 	out_llll:output(1)
 end
 

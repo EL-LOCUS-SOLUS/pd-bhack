@@ -31,7 +31,7 @@ function b_list:in_1_llll(atoms)
 	local id = atoms[1]
 	local llll = bhack.get_llll_fromid(self, id)
 	self.inlet_data[1] = llll:get_table()
-	local llll_new = bhack.llll:new_fromtable(self, self.inlet_data)
+	local llll_new = bhack.dddd:new_fromtable(self, self.inlet_data)
 	llll_new:output(1)
 end
 

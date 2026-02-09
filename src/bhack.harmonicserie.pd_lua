@@ -29,7 +29,7 @@ function bs:in_1_float(harmonics)
 	end
 
 	-- create bhack data from the harmonic serie data
-	local bhack_data = bhack.llll:new_fromtable(self, harmonic_series)
+	local bhack_data = bhack.dddd:new_fromtable(self, harmonic_series)
 	-- output in the first outlet
 	bhack_data:output(1)
 end

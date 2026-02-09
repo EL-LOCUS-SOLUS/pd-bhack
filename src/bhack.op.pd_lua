@@ -22,7 +22,7 @@ function b_op:initialize(_, args)
 		for i = 2, #args do
 			newargs[i - 1] = args[i]
 		end
-		self.llll2 = bhack.llll:new_fromtable(self, newargs)
+		self.llll2 = bhack.dddd:new_fromtable(self, newargs)
 	end
 
 	return true
@@ -89,7 +89,7 @@ function b_op:process_and_output()
 		result[i] = apply_op(self.op, n1, n2)
 	end
 
-	local out_llll = bhack.llll:new_fromtable(self, result)
+	local out_llll = bhack.dddd:new_fromtable(self, result)
 	out_llll:output(1)
 end
 
@@ -110,7 +110,7 @@ end
 
 -- ─────────────────────────────────────
 function b_op:in_2_float(f)
-	local llll = bhack.llll:new(self, { f })
+	local llll = bhack.dddd:new(self, { f })
 	self.llll2 = llll
 end
 

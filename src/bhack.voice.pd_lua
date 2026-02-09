@@ -72,7 +72,7 @@ function b_voice:midiout()
 			end
 		end
 	else
-		local llllnew = bhack.llll:new_fromtable(self, self.entry.chord)
+		local llllnew = bhack.dddd:new_fromtable(self, self.entry.chord)
 		llllnew:output(1)
 	end
 end

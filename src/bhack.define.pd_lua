@@ -19,7 +19,7 @@ end
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
 function b_llll:in_1_list(atoms)
-	local llll = bhack.llll:new(self, atoms)
+	local llll = bhack.dddd:new(self, atoms)
 	if self.llll_id ~= nil then
 		bhack.add_global_var(self.llll_id, llll)
 	end
@@ -28,7 +28,7 @@ end
 
 -- ─────────────────────────────────────
 function b_llll:in_1_float(atoms)
-	local llll = bhack.llll:new(self, atoms)
+	local llll = bhack.dddd:new(self, atoms)
 	if self.llll_id ~= nil then
 		bhack.add_global_var(self.llll_id, llll)
 	end

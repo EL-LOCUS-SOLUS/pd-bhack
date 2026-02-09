@@ -19,7 +19,7 @@ end
 -- ─────────────────────────────────────
 function m2n_llll:in_1_float(atoms)
 	local nn = self:convert(atoms)
-	bhack.llll:new_fromtable(self, nn):output(1)
+	bhack.dddd:new_fromtable(self, nn):output(1)
 end
 
 -- ─────────────────────────────────────
@@ -44,7 +44,7 @@ function m2n_llll:in_1_llll(atoms)
 		out = t
 	end
 
-	bhack.llll:new_fromtable(self, out):output(1)
+	bhack.dddd:new_fromtable(self, out):output(1)
 end
 
 -- ─────────────────────────────────────

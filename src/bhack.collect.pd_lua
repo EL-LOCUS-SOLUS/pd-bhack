@@ -24,7 +24,7 @@ function b_collect:in_1_llll(atoms)
 	if t == "begin" then
 		self.collected_table = {}
 	elseif t == "end" then
-		local llll = bhack.llll:new_fromtable(self, self.collected_table)
+		local llll = bhack.dddd:new_fromtable(self, self.collected_table)
 		llll:output(1)
 	end
 end
