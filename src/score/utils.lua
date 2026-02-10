@@ -257,17 +257,17 @@ function M.table_print(t)
 end
 
 -- ─────────────────────────────────────
-function M:in_1_llll(atoms)
+function M:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = M.get_llll_fromid(self, id)
-	if llll == nil then
-		self:bhack_error("llll not found")
+	local dddd = M.get_dddd_fromid(self, id)
+	if dddd == nil then
+		self:bhack_error("dddd not found")
 		return
 	end
 
-	if llll.depth == 1 then
-		local c = llll:get_table()
-		assert(type(c) == "table", "Expected table from llll:get_table()")
+	if dddd.depth == 1 then
+		local c = dddd:get_table()
+		assert(type(c) == "table", "Expected table from dddd:get_table()")
 		self.CHORDS = {}
 		for i = 1, #c do
 			local note = tostring(c[i])
@@ -275,7 +275,7 @@ function M:in_1_llll(atoms)
 		end
 	else
 		self.arpejo = false
-		self.CHORDS = llll:get_table()
+		self.CHORDS = dddd:get_table()
 	end
 
 	self:repaint()

@@ -10,19 +10,19 @@ function iterate:initialize(name, args)
 end
 
 -- ─────────────────────────────────────
-function iterate:in_1_llll(atoms)
+function iterate:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	if llll == nil then
-		self:bhack_error("llll not found")
+	local dddd = bhack.get_dddd_fromid(self, id)
+	if dddd == nil then
+		self:bhack_error("dddd not found")
 		return
 	end
 
 	bhack.dddd:new_fromtable(self, { "begin" }):output(1)
-	local t = llll:get_table()
+	local t = dddd:get_table()
 	for i, v in ipairs(t) do
-		local llll_i = bhack.dddd:new_fromtable(self, v)
-		llll_i:output(2)
+		local dddd_i = bhack.dddd:new_fromtable(self, v)
+		dddd_i:output(2)
 	end
 	bhack.dddd:new_fromtable(self, { "end" }):output(1)
 end

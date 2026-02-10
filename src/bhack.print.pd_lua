@@ -9,14 +9,14 @@ function b_print:initialize(name, args)
 end
 
 -- ─────────────────────────────────────
-function b_print:in_1_llll(atoms)
+function b_print:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	if llll == nil then
-		error("llll not found")
+	local dddd = bhack.get_dddd_fromid(self, id)
+	if dddd == nil then
+		error("dddd not found")
 	end
 
-	llll:print()
+	dddd:print()
 end
 
 -- ─────────────────────────────────────

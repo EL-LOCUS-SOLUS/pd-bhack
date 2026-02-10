@@ -14,10 +14,10 @@ function b_list:initialize(_, args)
 	self.inlet_data = {}
 	for i = 2, self.inlets do
 		local inlet_index = i
-		self["in_" .. i .. "_llll"] = function(self, atoms)
+		self["in_" .. i .. "_dddd"] = function(self, atoms)
 			local id = atoms[1]
-			local llll = bhack.get_llll_fromid(self, id)
-			self.inlet_data[inlet_index] = llll:get_table()
+			local dddd = bhack.get_dddd_fromid(self, id)
+			self.inlet_data[inlet_index] = dddd:get_table()
 		end
 	end
 
@@ -27,12 +27,12 @@ function b_list:initialize(_, args)
 end
 
 -- ─────────────────────────────────────
-function b_list:in_1_llll(atoms)
+function b_list:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	self.inlet_data[1] = llll:get_table()
-	local llll_new = bhack.dddd:new_fromtable(self, self.inlet_data)
-	llll_new:output(1)
+	local dddd = bhack.get_dddd_fromid(self, id)
+	self.inlet_data[1] = dddd:get_table()
+	local dddd_new = bhack.dddd:new_fromtable(self, self.inlet_data)
+	dddd_new:output(1)
 end
 
 -- ─────────────────────────────────────

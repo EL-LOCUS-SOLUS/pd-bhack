@@ -13,26 +13,26 @@ end
 
 -- ─────────────────────────────────────
 function b_collect:in_1_bang()
-	self:llll_outlet(1, self.outlet_id, self.collected_table)
+	self:dddd_outlet(1, self.outlet_id, self.collected_table)
 end
 
 -- ─────────────────────────────────────
-function b_collect:in_1_llll(atoms)
+function b_collect:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	local t = llll:get_table()[1]
+	local dddd = bhack.get_dddd_fromid(self, id)
+	local t = dddd:get_table()[1]
 	if t == "begin" then
 		self.collected_table = {}
 	elseif t == "end" then
-		local llll = bhack.dddd:new_fromtable(self, self.collected_table)
-		llll:output(1)
+		local dddd = bhack.dddd:new_fromtable(self, self.collected_table)
+		dddd:output(1)
 	end
 end
 -- ─────────────────────────────────────
-function b_collect:in_2_llll(atoms)
+function b_collect:in_2_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	local t = llll:get_table()
+	local dddd = bhack.get_dddd_fromid(self, id)
+	local t = dddd:get_table()
 	table.insert(self.collected_table, t)
 end
 

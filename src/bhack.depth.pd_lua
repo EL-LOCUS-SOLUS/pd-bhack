@@ -10,10 +10,10 @@ function b_depth:initialize(name, args)
 end
 
 -- ─────────────────────────────────────
-function b_depth:in_1_llll(atoms)
+function b_depth:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-    local t = llll:get_table()
+	local dddd = bhack.get_dddd_fromid(self, id)
+    local t = dddd:get_table()
     local depth = bhack.utils.table_depth(t)
 	self:outlet(1, "float", { depth })
 end

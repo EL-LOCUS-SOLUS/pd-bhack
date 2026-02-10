@@ -16,21 +16,21 @@ function b_nth:initialize(name, args)
 end
 
 -- ─────────────────────────────────────
-function b_nth:in_1_llll(atoms)
+function b_nth:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	if llll == nil then
-		self:bhack_error("llll not found")
+	local dddd = bhack.get_dddd_fromid(self, id)
+	if dddd == nil then
+		self:bhack_error("dddd not found")
 		return
 	end
 
-	local nth_llll = bhack.dddd:new_fromtable(self, llll:get_table()[self.nth])
-	if nth_llll == nil then
-		self:bhack_error("nth llll not found")
+	local nth_dddd = bhack.dddd:new_fromtable(self, dddd:get_table()[self.nth])
+	if nth_dddd == nil then
+		self:bhack_error("nth dddd not found")
 		return
 	end
 
-	nth_llll:output(1)
+	nth_dddd:output(1)
 end
 
 -- ─────────────────────────────────────

@@ -13,16 +13,16 @@ function b_op:initialize(_, args)
 	if not (self.op == "+" or self.op == "-" or self.op == "*" or self.op == "/") then
 		error("Invalid operator, use +, -, * or /")
 	end
-	-- placeholders for last-received tables (llll instances)
-	self.llll1 = nil
-	self.llll2 = nil
+	-- placeholders for last-received tables (dddd instances)
+	self.dddd1 = nil
+	self.dddd2 = nil
 
 	if #args > 1 then
 		local newargs = {}
 		for i = 2, #args do
 			newargs[i - 1] = args[i]
 		end
-		self.llll2 = bhack.dddd:new_fromtable(self, newargs)
+		self.dddd2 = bhack.dddd:new_fromtable(self, newargs)
 	end
 
 	return true
@@ -54,16 +54,16 @@ end
 
 -- ─────────────────────────────────────
 function b_op:process_and_output()
-	if not self.llll1 or not self.llll2 then
-		if self.llll1 == nil then
-			error("First operand llll not received yet")
+	if not self.dddd1 or not self.dddd2 then
+		if self.dddd1 == nil then
+			error("First operand dddd not received yet")
 		else
-			error("Second operand llll not received yet")
+			error("Second operand dddd not received yet")
 		end
 	end
 
-	local t1 = self.llll1:get_table()
-	local t2 = self.llll2:get_table()
+	local t1 = self.dddd1:get_table()
+	local t2 = self.dddd2:get_table()
 
 	local t1_is_table = type(t1) == "table"
 	local t2_is_table = type(t2) == "table"
@@ -89,35 +89,35 @@ function b_op:process_and_output()
 		result[i] = apply_op(self.op, n1, n2)
 	end
 
-	local out_llll = bhack.dddd:new_fromtable(self, result)
-	out_llll:output(1)
+	local out_dddd = bhack.dddd:new_fromtable(self, result)
+	out_dddd:output(1)
 end
 
 -- ─────────────────────────────────────
-function b_op:in_1_llll(atoms)
+function b_op:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	self.llll1 = llll
+	local dddd = bhack.get_dddd_fromid(self, id)
+	self.dddd1 = dddd
 	self:process_and_output()
 end
 
 -- ─────────────────────────────────────
-function b_op:in_2_llll(atoms)
+function b_op:in_2_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	self.llll2 = llll
+	local dddd = bhack.get_dddd_fromid(self, id)
+	self.dddd2 = dddd
 end
 
 -- ─────────────────────────────────────
 function b_op:in_2_float(f)
-	local llll = bhack.dddd:new(self, { f })
-	self.llll2 = llll
+	local dddd = bhack.dddd:new(self, { f })
+	self.dddd2 = dddd
 end
 
 -- ─────────────────────────────────────
 function b_op:finalize()
-	self.llll1 = nil
-	self.llll2 = nil
+	self.dddd1 = nil
+	self.dddd2 = nil
 end
 
 -- ─────────────────────────────────────
