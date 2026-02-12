@@ -72,8 +72,8 @@ function b_voice:midiout()
 			end
 		end
 	else
-		local llllnew = bhack.dddd:new_fromtable(self, self.entry.chord)
-		llllnew:output(1)
+		local ddddnew = bhack.dddd:new_fromtable(self, self.entry.chord)
+		ddddnew:output(1)
 	end
 end
 
@@ -291,14 +291,14 @@ function b_voice:in_1_bpm(args)
 end
 
 -- ─────────────────────────────────────
-function b_voice:in_1_llll(atoms)
+function b_voice:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	if llll == nil then
-		self:bhack_error("llll not found")
+	local dddd = bhack.get_dddd_fromid(self, id)
+	if dddd == nil then
+		self:bhack_error("dddd not found")
 		return
 	end
-	local t = llll:get_table()
+	local t = dddd:get_table()
 	if not is_rhythm_tree(t) then
 		self:bhack_error("Input is not a valid rhythm tree")
 		return
@@ -332,17 +332,17 @@ function b_voice:in_1_play()
 end
 
 -- ─────────────────────────────────────
-function b_voice:in_2_llll(atoms)
+function b_voice:in_2_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	if llll == nil then
-		self:bhack_error("llll not found")
+	local dddd = bhack.get_dddd_fromid(self, id)
+	if dddd == nil then
+		self:bhack_error("dddd not found")
 		return
 	end
-	if llll.depth == 1 then
-		error("llll must be of depth 2 for chords/arpeggios")
+	if dddd.depth == 1 then
+		error("dddd must be of depth 2 for chords/arpeggios")
 	else
-		self.CHORDS = llll:get_table()
+		self.CHORDS = dddd:get_table()
 	end
 end
 

@@ -13,7 +13,7 @@ M.score = score
 M.utils = utils
 
 --╭─────────────────────────────────────╮
---│         llll output method          │
+--│         dddd output method          │
 --╰─────────────────────────────────────╯
 function M.add_global_var(id, value)
 	_G.bhack_global_var[id] = value
@@ -25,10 +25,10 @@ function M.get_global_var(id)
 end
 
 -- ─────────────────────────────────────
-function M.get_llll_fromid(self, id)
+function M.get_dddd_fromid(self, id)
 	local original = _G.bhack_outlets[id]
 	if not original then
-		error("llll with id " .. tostring(id) .. " not found")
+		error("dddd with id " .. tostring(id) .. " not found")
 	end
 
 	local function deep_copy_table(obj)

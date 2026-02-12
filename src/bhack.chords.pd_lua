@@ -277,16 +277,16 @@ function b_chords:in_1_play()
 end
 
 -- ─────────────────────────────────────
-function b_chords:in_1_llll(atoms)
+function b_chords:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id)
-	if llll == nil then
-		error("llll not found")
+	local dddd = bhack.get_dddd_fromid(self, id)
+	if dddd == nil then
+		error("dddd not found")
 	end
-	if llll.depth == 1 then
-		error("llll must be of depth 2 for chords/arpeggios")
+	if dddd.depth == 1 then
+		error("dddd must be of depth 2 for chords/arpeggios")
 	else
-		self.CHORDS = llll:get_table()
+		self.CHORDS = dddd:get_table()
 	end
 
 	self.Score:set_material({

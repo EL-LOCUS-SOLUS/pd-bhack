@@ -3,11 +3,11 @@ M.__index = M
 
 -- ─────────────────────────────────────
 local function random_string(len)
-    local res = {}
-    for i = 1, len do
-        res[i] = string.format("%x", math.random(0, 15))
-    end
-    return table.concat(res)
+	local res = {}
+	for i = 1, len do
+		res[i] = string.format("%x", math.random(0, 15))
+	end
+	return table.concat(res)
 end
 
 -- ─────────────────────────────────────
@@ -16,7 +16,7 @@ function M:new(pdobj, atoms)
 	obj.atoms = atoms or {}
 	obj.table = self:table_from_atoms(atoms)
 	obj.pdobj = pdobj
-	obj.pdobj._llll_id = random_string(8)
+	obj.pdobj._dddd_id = random_string(8)
 	obj.depth = self:get_depth(obj.table)
 	return obj
 end
@@ -26,9 +26,22 @@ function M:new_fromtable(pdobj, t)
 	local obj = setmetatable({}, self)
 	obj.table = t
 	obj.pdobj = pdobj
-	obj.pdobj._llll_id = random_string(8)
+	obj.pdobj._dddd_id = random_string(8)
 	obj.depth = self:get_depth(obj.table)
 	return obj
+end
+
+-- ─────────────────────────────────────
+function M:settype(typename)
+	self.type = typename
+end
+
+-- ─────────────────────────────────────
+function M:asserttype(typename)
+	if typename ~= self.type then
+		self.pdobj:error("[" .. self.pdobj._name .. "] Expected type " .. self.type .. " received type " .. typename)
+		error("[" .. self.pdobj._name .. "] Expected type " .. self.type .. " received type " .. typename)
+	end
 end
 
 -- ─────────────────────────────────────
@@ -36,16 +49,17 @@ function M:new_fromid(pdobj, id)
 	local obj = setmetatable({}, self)
 	obj.atoms = {}
 	obj.table = _G.bhack_outlets[id]
-	obj.pdobj._llll_id = random_string(8)
+	obj.pdobj._dddd_id = random_string(8)
 	obj._id = tostring({}):match("0x[%x]+")
+	obj.pdobj = pdobj
 	return obj
 end
 
 -- ─────────────────────────────────────
 function M:output(i)
-	local str = "<" .. self.pdobj._llll_id .. ">"
+	local str = "<" .. self.pdobj._dddd_id .. ">"
 	_G.bhack_outlets[str] = self
-	pd._outlet(self.pdobj._object, i, "llll", { str })
+	pd._outlet(self.pdobj._object, i, "dddd", { str })
 	_G.bhack_outlets[str] = nil -- clear memory
 end
 

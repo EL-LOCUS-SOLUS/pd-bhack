@@ -10,22 +10,22 @@ function b_topd:initialize(name, args)
 end
 
 -- ─────────────────────────────────────
-function b_topd:in_1_llll(atoms)
+function b_topd:in_1_dddd(atoms)
 	local id = atoms[1]
-	local llll = bhack.get_llll_fromid(self, id):get_table()
-	if llll == nil then
-		error("llll not found")
+	local dddd = bhack.get_dddd_fromid(self, id):get_table()
+	if dddd == nil then
+		error("dddd not found")
 		return
 	end
 
-	if bhack.utils.table_depth(llll) > 1 then
+	if bhack.utils.table_depth(dddd) > 1 then
 		error("Impossible to convert table to Pd")
 	end
 
-	if type(llll) ~= "table" then
-		self:outlet(1, "list", { llll })
+	if type(dddd) ~= "table" then
+		self:outlet(1, "list", { dddd })
 	else
-		self:outlet(1, "list", llll)
+		self:outlet(1, "list", dddd)
 	end
 end
 
