@@ -20,6 +20,7 @@ end
 --╰─────────────────────────────────────╯
 function b_dddd:in_1_list(atoms)
 	local dddd = bhack.dddd:new(self, atoms)
+    dddd:settype("list")
 	if self.dddd_id ~= nil then
 		bhack.add_global_var(self.dddd_id, dddd)
 	end

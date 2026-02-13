@@ -1082,6 +1082,7 @@ local function build_measure_meta(voice_measures)
 			measure = m,
 			max_nested_tuplet_depth = m and m.max_tuplet_depth or 0,
 		}
+		meta[#meta].base_show_time_signature = meta[#meta].show_time_signature
 		if count > 0 then
 			agg_index = agg_index + count
 		end
@@ -1815,7 +1816,8 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 	if direction == "down" then
 		beam_line_y = math.max(beam_line_y, extreme_y)
 		-- Cached baseline for down-stems may only move downward (increasing Y).
-		state.tuplet_primary_beam_line[direction_key] = math.max(state.tuplet_primary_beam_line[direction_key] or beam_line_y, beam_line_y)
+		state.tuplet_primary_beam_line[direction_key] =
+			math.max(state.tuplet_primary_beam_line[direction_key] or beam_line_y, beam_line_y)
 	else
 		beam_line_y = math.min(beam_line_y, extreme_y)
 		-- Cached baseline for up-stems may only move upward (decreasing Y).
@@ -1843,9 +1845,18 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 			if current_y then
 				local eps = 0.01
 				-- Only extend stems (never attempt to shorten).
-				if (direction == "down" and current_y < (outer_attachment_y - eps))
-					or (direction ~= "down" and current_y > (outer_attachment_y + eps)) then
-					extend_stem_for_tuplet(state, entry.note, entry.stem_metrics, direction, current_y, outer_attachment_y)
+				if
+					(direction == "down" and current_y < (outer_attachment_y - eps))
+					or (direction ~= "down" and current_y > (outer_attachment_y + eps))
+				then
+					extend_stem_for_tuplet(
+						state,
+						entry.note,
+						entry.stem_metrics,
+						direction,
+						current_y,
+						outer_attachment_y
+					)
 					entry.y = outer_attachment_y
 				else
 					entry.y = current_y
@@ -2696,6 +2707,11 @@ local function prepare_measure_lookups(state)
 		meta.content_left = nil
 		meta.content_right = nil
 		meta.tuplet_base_y = meta.tuplet_base_y
+		meta.show_time_signature = meta.base_show_time_signature
+		meta.time_signature_rendered = false
+		meta.measure_number_rendered = false
+		meta.measure_number_center_x = nil
+		meta.measure_number_y = nil
 		if meta.start_index then
 			state.start_lookup[meta.start_index] = meta
 		end
@@ -3608,6 +3624,76 @@ local function handle_measure_number(state)
 		return state
 	end
 
+	local first_entry_index = state.first_visible_entry_index
+	local first_measure_index = state.first_visible_measure_index
+	if first_entry_index and entry_index == first_entry_index then
+		local meta = state.start_lookup and state.start_lookup[first_entry_index]
+		local measure = meta and meta.measure
+		local measure_number = (measure and measure.measure_number) or (meta and meta.index) or first_measure_index
+		if measure_number and meta and not meta.measure_number_rendered then
+			local label = tostring(measure_number)
+			if label ~= "" then
+				local fallback_width = state.staff_spacing * 0.35
+				local glyph_entries = {}
+				local bbox_lookup = state.ctx and state.ctx.glyph and state.ctx.glyph.bboxes or {}
+				for ch in label:gmatch("%d") do
+					local preferred = "fingering" .. ch
+					if not (bbox_lookup and bbox_lookup[preferred]) then
+						preferred = "tuplet" .. ch
+					end
+					glyph_entries[#glyph_entries + 1] = {
+						glyph = preferred,
+						fallback = "tuplet" .. ch,
+						width = glyph_width_px(state.ctx, preferred)
+							or glyph_width_px(state.ctx, "tuplet" .. ch)
+							or fallback_width,
+					}
+				end
+				if #glyph_entries > 0 then
+					local total_width = 0
+					for _, entry in ipairs(glyph_entries) do
+						total_width = total_width + (entry.width or fallback_width)
+					end
+					local base_x = (meta and meta.measure_start_x) or state.current_x or 0
+					local anchor_center_x = base_x + (state.measure_number_gap or (state.staff_spacing * 0.3))
+					local cursor = anchor_center_x - (total_width * 0.5)
+					local baseline_y = state.measure_number_y - (state.staff_spacing * 0.5)
+
+					local fragments = {}
+					for _, entry in ipairs(glyph_entries) do
+						local chunk =
+							glyph_group(state.ctx, entry.glyph, cursor, baseline_y, "left", "center", "#444")
+						if (not chunk) and entry.fallback and entry.fallback ~= entry.glyph then
+							chunk = glyph_group(state.ctx, entry.fallback, cursor, baseline_y, "left", "center", "#444")
+							if chunk and (not entry.width or entry.width == fallback_width) then
+								local fallback_px = glyph_width_px(state.ctx, entry.fallback)
+								if fallback_px then
+									entry.width = fallback_px
+								end
+							end
+						end
+						if chunk then
+							fragments[#fragments + 1] = "    " .. chunk
+						end
+						cursor = cursor + (entry.width or fallback_width)
+					end
+
+					if #fragments > 0 then
+						state.measure_number_svg[#state.measure_number_svg + 1] = table.concat({
+							'  <g class="measure-number">',
+							table.concat(fragments, "\n"),
+							"  </g>",
+						}, "\n")
+
+						meta.measure_number_rendered = true
+						meta.measure_number_center_x = anchor_center_x
+						meta.measure_number_y = baseline_y
+					end
+				end
+			end
+		end
+	end
+
 	local finished_meta = state.end_lookup and state.end_lookup[entry_index]
 	if not finished_meta then
 		return state
@@ -3759,7 +3845,26 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 		state.total_entries = #chords
 	end
 
-	for entry_index = 1, state.total_entries do
+	local start_entry_index = math.tointeger(ctx.current_entry_start_index) or 1
+	if start_entry_index < 1 then
+		start_entry_index = 1
+	end
+	local start_measure_position = math.tointeger(ctx.current_measure_position) or 1
+	if start_measure_position < 1 then
+		start_measure_position = 1
+	end
+	state.first_visible_entry_index = start_entry_index
+	state.first_visible_measure_index = start_measure_position
+	if measure_meta and measure_meta[start_measure_position] then
+		local start_meta = measure_meta[start_measure_position]
+		start_meta.show_time_signature = true
+		start_meta.time_signature_rendered = false
+	end
+	if start_entry_index > state.total_entries then
+		return finalize_svg_groups(state)
+	end
+
+	for entry_index = start_entry_index, state.total_entries do
 		state.current_position_index = entry_index
 		state = apply_measure_start(state)
 
@@ -4509,6 +4614,17 @@ function Measure:get_measure_min_fig()
 	self.min_figure = utils.floor_pow2(fig)
 end
 
+-- ─────────────────────────────────────
+function Measure:set_current_measure_position(position)
+	local pos = math.tointeger(position) or tonumber(position) or 1
+	if not pos or pos < 1 then
+		pos = 1
+	end
+	self.current_measure_position = pos
+	self.is_visible = (self.measure_number or 0) >= pos
+	return self.is_visible
+end
+
 local function assign_tuplet_directions(chords, tuplets, clef_key)
 	utils.log("assign_tuplet_directions", 2)
 	local lookup = {}
@@ -4596,6 +4712,7 @@ function Voice:new(material)
 	obj.material = material or {}
 	obj.measures = {}
 	obj.chords = {}
+	obj.current_measure_position = 1
 
 	local t = obj.material.tree or {}
 	local current_time_sig = { 4, 4 }
@@ -4714,6 +4831,35 @@ function Voice:new(material)
 	return obj
 end
 
+-- ─────────────────────────────────────
+function Voice:set_current_measure_position(position)
+	local pos = math.tointeger(position) or tonumber(position) or 1
+	if not pos or pos < 1 then
+		pos = 1
+	end
+	self.current_measure_position = pos
+
+	local entry_offset = 0
+	local start_entry_index = 1
+	local found = false
+	for _, measure in ipairs(self.measures or {}) do
+		if not found and (measure.measure_number or 0) >= pos then
+			start_entry_index = entry_offset + 1
+			found = true
+		end
+		if measure.set_current_measure_position then
+			measure:set_current_measure_position(pos)
+		end
+		entry_offset = entry_offset + #(measure.entries or {})
+	end
+	if not found then
+		start_entry_index = entry_offset + 1
+	end
+
+	self.current_entry_start_index = start_entry_index
+	return start_entry_index
+end
+
 --╭─────────────────────────────────────╮
 --│                Score                │
 --╰─────────────────────────────────────╯
@@ -4721,6 +4867,7 @@ function Score:new(w, h)
 	local obj = setmetatable({}, self)
 	obj.w = w
 	obj.h = h
+	obj.current_measure_position = 1
 	if not M.__font_singleton then
 		M.__font_singleton = FontLoaded:new()
 	end
@@ -4757,6 +4904,7 @@ function Score:set_material(material)
 	local voice = Voice:new(material)
 	local measures = voice.measures
 	local chords = voice.chords
+	self.voice = voice
 
 	-- Clef config and geometry
 	local clef_cfg = resolve_clef_config(self.clef_name_or_key)
@@ -4862,6 +5010,29 @@ function Score:set_material(material)
 
 	self.ctx.tree = material.tree
 	self.ctx.spacing_sequence = compute_spacing_from_measures(self.ctx, measures)
+
+	self.current_measure_position = self.current_measure_position or 1
+	self:set_current_measure_position(self.current_measure_position)
+end
+
+-- ─────────────────────────────────────
+function Score:set_current_measure_position(position)
+	local pos = math.tointeger(position) or tonumber(position) or 1
+	if not pos or pos < 1 then
+		pos = 1
+	end
+	self.current_measure_position = pos
+
+	local start_entry_index = 1
+	if self.voice and self.voice.set_current_measure_position then
+		start_entry_index = self.voice:set_current_measure_position(pos) or start_entry_index
+	end
+
+	if self.ctx then
+		self.ctx.current_measure_position = pos
+		self.ctx.current_entry_start_index = start_entry_index
+		self.ctx.force_time_signature = true
+	end
 end
 
 -- ─────────────────────────────────────
@@ -4870,28 +5041,65 @@ function Score:set_bpm(bpm)
 end
 
 -- ─────────────────────────────────────
-function Score:get_onsets()
+function Score:get_onsets(playbar_position)
+	local start_measure = math.tointeger(self.ctx.current_measure_position) or 1
+	if start_measure < 1 then
+		start_measure = 1
+	end
+
 	local bounds = self.ctx.chords_rest_positions
 	if not bounds or #bounds == 0 then
-		return {}
+		return {}, 0, start_measure
 	end
 
 	local measures = self.ctx.measures or {}
 	local bpm = self.ctx.bpm
 	local bpm_figure = 4
 	local ms_per_whole = (60000 / bpm) * bpm_figure
+	local target_ms = tonumber(playbar_position) or 0
+	if target_ms < 0 then
+		target_ms = 0
+	end
 
 	local entry_onsets = {}
 	local entry_durations = {}
 	local cursor_ms = 0
-	for _, measure in ipairs(measures) do
-		for _, entry in ipairs(measure.entries or {}) do
-			local duration = entry and entry.duration or 0
-			entry_onsets[#entry_onsets + 1] = cursor_ms
-			entry_durations[#entry_durations + 1] = duration * ms_per_whole
-			cursor_ms = cursor_ms + (duration * ms_per_whole)
+	local current_measure = nil
+	local current_measure_offset_ms = nil
+	local last_measure = start_measure
+	local last_measure_start_ms = 0
+	for i, measure in ipairs(measures) do
+		if i >= start_measure then
+			local measure_start_ms = cursor_ms
+			last_measure = i
+			last_measure_start_ms = measure_start_ms
+			for _, entry in ipairs(measure.entries or {}) do
+				local duration = entry and entry.duration or 0
+				local duration_ms = duration * ms_per_whole
+				entry_onsets[#entry_onsets + 1] = cursor_ms
+				entry_durations[#entry_durations + 1] = duration_ms
+				if not current_measure and target_ms >= cursor_ms and target_ms < (cursor_ms + duration_ms) then
+					current_measure = i
+					current_measure_offset_ms = target_ms - measure_start_ms
+				end
+				cursor_ms = cursor_ms + duration_ms
+			end
 		end
 	end
+
+	if not current_measure then
+		if target_ms <= 0 then
+			current_measure = start_measure
+			current_measure_offset_ms = 0
+		else
+			current_measure = last_measure
+			current_measure_offset_ms = target_ms - last_measure_start_ms
+			if current_measure_offset_ms < 0 then
+				current_measure_offset_ms = 0
+			end
+		end
+	end
+
 	local indexed = {}
 	local total = math.min(#bounds, #entry_onsets)
 	local last_onset = 0
@@ -4906,7 +5114,7 @@ function Score:get_onsets()
 			end
 		end
 	end
-	return indexed, last_onset
+	return indexed, last_onset, current_measure, current_measure_offset_ms
 end
 
 -- ─────────────────────────────────────

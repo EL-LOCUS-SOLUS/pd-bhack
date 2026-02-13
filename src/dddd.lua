@@ -1,32 +1,33 @@
 local M = {}
 M.__index = M
+_G.dddd_outlets = _G.dddd_outlets or {}
 
 -- ─────────────────────────────────────
-local function random_string(len)
+local function random_string()
 	local res = {}
-	for i = 1, len do
+	for i = 1, 12 do
 		res[i] = string.format("%x", math.random(0, 15))
 	end
 	return table.concat(res)
 end
 
 -- ─────────────────────────────────────
+-- Create a new dddd from pd atoms
 function M:new(pdobj, atoms)
 	local obj = setmetatable({}, self)
 	obj.atoms = atoms or {}
 	obj.table = self:table_from_atoms(atoms)
 	obj.pdobj = pdobj
-	obj.pdobj._dddd_id = random_string(8)
 	obj.depth = self:get_depth(obj.table)
 	return obj
 end
 
 -- ─────────────────────────────────────
+-- Create a new dddd from a table
 function M:new_fromtable(pdobj, t)
 	local obj = setmetatable({}, self)
-	obj.table = t
 	obj.pdobj = pdobj
-	obj.pdobj._dddd_id = random_string(8)
+	obj.table = t
 	obj.depth = self:get_depth(obj.table)
 	return obj
 end
@@ -48,19 +49,58 @@ end
 function M:new_fromid(pdobj, id)
 	local obj = setmetatable({}, self)
 	obj.atoms = {}
-	obj.table = _G.bhack_outlets[id]
-	obj.pdobj._dddd_id = random_string(8)
-	obj._id = tostring({}):match("0x[%x]+")
+	local stored = _G.dddd_outlets[id]
+	if stored == nil then
+		error("dddd outlet id " .. tostring(id) .. " not found")
+	end
+
+	-- We store the *dddd instance* in _G.dddd_outlets (see M:output).
+	-- Consumers expect `get_table()` to return the underlying payload table
+	-- (e.g. the SVG DOM node with `.attr`).
+	if type(stored) == "table" and type(stored.get_table) == "function" then
+		obj.table = stored:get_table()
+	else
+		obj.table = stored
+	end
+
+	obj.depth = self:get_depth(obj.table)
+	obj._id = random_string()
 	obj.pdobj = pdobj
 	return obj
 end
 
 -- ─────────────────────────────────────
+function M.get_ddddfromid(pdobj, id)
+	local original = _G.dddd_outlets[id]
+	if not original then
+		error("dddd with id " .. tostring(id) .. " not found")
+	end
+
+	local function deep_copy_table(obj)
+		if type(obj) ~= "table" then
+			local copy = obj
+			return copy
+		else
+			local copy = {}
+			for k, v in pairs(obj) do
+				copy[k] = v
+			end
+			return copy
+		end
+	end
+
+	local cloned_table = deep_copy_table(original:get_table())
+	local cloned = M:new_fromtable(pdobj, cloned_table)
+	return cloned
+end
+
+-- ─────────────────────────────────────
 function M:output(i)
-	local str = "<" .. self.pdobj._dddd_id .. ">"
-	_G.bhack_outlets[str] = self
+	local id = random_string()
+	local str = "<" .. id .. ">"
+	_G.dddd_outlets[str] = self
 	pd._outlet(self.pdobj._object, i, "dddd", { str })
-	_G.bhack_outlets[str] = nil -- clear memory
+	_G.dddd_outlets[str] = nil -- clear memory
 end
 
 -- ─────────────────────────────────────
@@ -130,7 +170,6 @@ end
 -- ─────────────────────────────────────
 function M:print()
 	if type(self.table) ~= "table" then
-		pd.post(self.table)
 		return
 	end
 
@@ -174,7 +213,7 @@ function M:check_brackets(str)
 	local thereis_p = str:find("%(") or str:find("%)")
 
 	if thereis_b and thereis_p then
-		self:bhack_error("mixed brackets and parenthesis are not allowed")
+		error("mixed brackets and parenthesis are not allowed")
 	elseif not thereis_b and not thereis_p then
 		return "[", "]"
 	elseif thereis_b then

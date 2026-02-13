@@ -12,7 +12,8 @@ end
 -- ─────────────────────────────────────
 function b_topd:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.get_dddd_fromid(self, id):get_table()
+	local dddd = bhack.dddd:new_fromid(self, id)
+	
 	if dddd == nil then
 		error("dddd not found")
 		return

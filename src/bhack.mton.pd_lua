@@ -25,7 +25,7 @@ end
 -- ─────────────────────────────────────
 function m2n_dddd:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.get_dddd_fromid(self, id)
+	local dddd = bhack.dddd:new_fromid(self, id)
 	if not dddd then
 		self:bhack_error("dddd not found")
 		return

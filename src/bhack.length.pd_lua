@@ -11,7 +11,8 @@ end
 
 -- ─────────────────────────────────────
 function b_len:in_1_dddd(atoms)
-	local t = _G.bhack_outlets[atoms[1]]
+	local id = atoms[1]
+	local dddd = bhack.dddd:new_fromid(self, id)
 	self:outlet(1, "float", { #t })
 end
 

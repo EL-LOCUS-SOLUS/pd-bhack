@@ -18,7 +18,7 @@ end
 -- ─────────────────────────────────────
 function b_nth:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.get_dddd_fromid(self, id)
+	local dddd = bhack.dddd:new_fromid(self, id)
 	if dddd == nil then
 		self:bhack_error("dddd not found")
 		return

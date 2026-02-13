@@ -15,6 +15,7 @@ M.utils = utils
 --╭─────────────────────────────────────╮
 --│         dddd output method          │
 --╰─────────────────────────────────────╯
+-- This add in case use wants to use it without connections
 function M.add_global_var(id, value)
 	_G.bhack_global_var[id] = value
 end

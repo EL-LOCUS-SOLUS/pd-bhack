@@ -17,7 +17,7 @@ function b_voice:initialize(_, args)
 	self.current_clef_key = "g"
 
 	-- Geometry
-	local default_width = 400
+	local default_width = 250
 	local default_height = 80
 	self.width = args and tonumber(args[1]) or default_width
 	self.height = args and tonumber(args[2]) or default_height
@@ -92,25 +92,45 @@ function b_voice:clear_playbar()
 	self.previous_entry = nil
 
 	-- sinal de término
+	self.current_measure = 1
+	self.Score:set_current_measure_position(self.current_measure)
+	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
+		self.Score:get_onsets(self.playbar_position)
+	self.last_advanced_from_measure = nil
+	self.last_advanced_from_offset = nil
+	self.awaiting_render = false
 	self.is_playing = false
 	self.playbar_position = 0
 	self:outlet(2, "bang", { "bang" })
-	self:repaint(2)
+	self:repaint()
 end
 
 -- ─────────────────────────────────────
 function b_voice:playing_clock()
-	self.playbar_position = self.playbar_position + 1
-	self.onsets, self.last_onset = self.Score:get_onsets()
-
-	if self.playbar_position > self.last_onset then
-		self.previous_entry = self.entry
-		self.entry = nil
-		self.clear_after_play:delay(self.previous_entry.duration)
+	if self.awaiting_render then
+		self.playclock:delay(1)
 		return
 	end
 
-	local entry = self.onsets[self.playbar_position]
+	self.playbar_position = self.playbar_position + 1
+	local tick = math.floor(self.playbar_position)
+	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
+		self.Score:get_onsets(tick)
+	self.last_onset = self.last_onset or 0
+
+	if tick > self.last_onset then
+		self.previous_entry = self.entry
+		self.entry = nil
+		if self.previous_entry and self.previous_entry.duration then
+			self.clear_after_play:delay(self.previous_entry.duration)
+		else
+			self.clear_after_play:delay(0)
+		end
+		return
+	end
+
+	self.playbar_position = tick
+	local entry = self.onsets[tick]
 	local pos = (entry and entry.left) or self.last_valid_position or 0
 	local is_rest = entry and entry.is_rest
 
@@ -210,6 +230,23 @@ local function normalize_chords_list(raw)
 	return chords
 end
 
+-- ─────────────────────────────────────
+local function get_max_measure_end_x(ctx)
+	if not ctx or type(ctx.measure_meta) ~= "table" then
+		return nil
+	end
+	local max_end = nil
+	for _, meta in ipairs(ctx.measure_meta) do
+		local end_x = meta and (meta.measure_end_x or meta.content_right)
+		if type(end_x) == "number" then
+			if max_end == nil or end_x > max_end then
+				max_end = end_x
+			end
+		end
+	end
+	return max_end
+end
+
 --╭─────────────────────────────────────╮
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
@@ -293,7 +330,7 @@ end
 -- ─────────────────────────────────────
 function b_voice:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.get_dddd_fromid(self, id)
+	local dddd = bhack.dddd:new_fromid(self, id)
 	if dddd == nil then
 		self:bhack_error("dddd not found")
 		return
@@ -303,6 +340,8 @@ function b_voice:in_1_dddd(atoms)
 		self:bhack_error("Input is not a valid rhythm tree")
 		return
 	end
+
+    -- pd.post("quantos compassos: ".. #self.rhythm_tree_spec)
 
 	self.rhythm_tree_spec = t
 	self.Score:set_material({
@@ -324,7 +363,8 @@ function b_voice:in_1_play()
 		return
 	end
 
-	self.onsets, self.last_onset = self.Score:get_onsets()
+	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
+		self.Score:get_onsets(self.playbar_position)
 	self.last_onset = -1
 	self.playbar_position = -1
 	self.playclock:delay(1)
@@ -334,7 +374,7 @@ end
 -- ─────────────────────────────────────
 function b_voice:in_2_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.get_dddd_fromid(self, id)
+	local dddd = bhack.dddd:new_fromid(self, id)
 	if dddd == nil then
 		self:bhack_error("dddd not found")
 		return
@@ -385,17 +425,31 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:paint(g)
+	--pd.post("Repainting voice")
 	self.svg = self.Score:getsvg()
 
 	if self.svg == nil then
 		error("Error generating SVG")
 	end
 
-	self.onsets, self.last_onset = self.Score:get_onsets()
+	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
+		self.Score:get_onsets(self.playbar_position)
+	self.awaiting_render = false
 
 	local errors = self.Score:get_errors()
 	if #errors > 0 then
 		-- self:error("Seems that the score is small for the score")
+	end
+
+	local max_measure_end_x = get_max_measure_end_x(self.Score and self.Score.ctx)
+	self.max_measure_end_x = max_measure_end_x
+	if max_measure_end_x and max_measure_end_x > self.width then
+		if not self.measure_width_error_reported then
+			self:error("[bhack.voice] Measure exceeds object width")
+			self.measure_width_error_reported = true
+		end
+	else
+		self.measure_width_error_reported = false
 	end
 
 	g:set_color(247, 247, 247)
@@ -426,11 +480,65 @@ function b_voice:paint_layer_2(g)
 		-- barra que indica a posição atual
 		g:set_color(180, 75, 75)
 		local pos = self.last_valid_position
+		local max_pos = math.max(0, self.width - padding)
+		if pos > max_pos then
+			pos = max_pos
+		end
 		g:fill_rect(pos - 1, padding, 1, self.height - (padding * 2))
 
 		if pos > self.width * 0.8 then
-			-- TODO:
-			pd.post("Need update the measures")
+			local play_measure = self.current_play_measure or self.current_measure
+			local offset_ms = self.current_play_measure_offset or 0
+			local total_measures = (self.Score and self.Score.ctx and #(self.Score.ctx.measures or {})) or 0
+			local target_measure
+			local target_offset_ms
+			if offset_ms > 0 then
+				target_measure = play_measure or 1
+				target_offset_ms = offset_ms
+			else
+				target_measure = (play_measure or 1) + 1
+				target_offset_ms = 0
+			end
+			if total_measures > 0 and target_measure > total_measures then
+				target_measure = total_measures
+				if target_measure < 1 then
+					return
+				end
+				if play_measure and play_measure > target_measure then
+					play_measure = target_measure
+				end
+			end
+
+			local last_measure = self.last_advanced_from_measure or 0
+			local last_offset = self.last_advanced_from_offset or -1
+			local offset_delta = offset_ms - last_offset
+			local allow_update = (last_measure < (play_measure or 0)) or ((play_measure or 0) == last_measure and offset_delta > 1)
+			if allow_update then
+				self.last_advanced_from_measure = play_measure
+				self.last_advanced_from_offset = offset_ms
+				self.current_measure = target_measure
+				self.Score:set_current_measure_position(self.current_measure)
+				self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
+					self.Score:get_onsets(target_offset_ms)
+				local best_entry = nil
+				local best_time = -1
+				for t, entry in pairs(self.onsets) do
+					if t <= target_offset_ms and t > best_time then
+						best_time = t
+						best_entry = entry
+					end
+				end
+				if not best_entry then
+					best_entry = self.onsets[0]
+				end
+				self.playbar_position = math.max(0, math.floor(target_offset_ms)) - 1
+				self.last_valid_position = (best_entry and best_entry.left) or 0
+				self.last_draw_position = nil
+				self.entry = nil
+				self.previous_entry = nil
+				self.awaiting_render = true
+				self:repaint()
+			end
 		end
 	else
 		local rect_width = 1
