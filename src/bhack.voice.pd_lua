@@ -416,7 +416,8 @@ function b_voice:in_1_save(atoms)
 		file:write(self.svg)
 		file:close()
 	elseif path:match("%.musicxml$") then
-		self.Score:export_voice_musicxml(path)
+        local curr_path = self:get_canvas_dir() .. "/" .. path
+		self.Score:export_voice_musicxml(curr_path)
 		return
 	else
 		error("Just .svg and .musicxml are supported")
@@ -443,14 +444,7 @@ function b_voice:paint(g)
 
 	local max_measure_end_x = get_max_measure_end_x(self.Score and self.Score.ctx)
 	self.max_measure_end_x = max_measure_end_x
-	if max_measure_end_x and max_measure_end_x > self.width then
-		if not self.measure_width_error_reported then
-			self:error("[bhack.voice] Measure exceeds object width")
-			self.measure_width_error_reported = true
-		end
-	else
-		self.measure_width_error_reported = false
-	end
+
 
 	g:set_color(247, 247, 247)
 	g:fill_all()

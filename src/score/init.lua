@@ -1,0 +1,1 @@
+return require("score/score")
