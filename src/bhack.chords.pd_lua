@@ -279,7 +279,8 @@ end
 -- ─────────────────────────────────────
 function b_chords:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.get_dddd_fromid(self, id)
+	local dddd = bhack.dddd:new_fromid(self, id)
+
 	if dddd == nil then
 		error("dddd not found")
 	end
@@ -384,4 +385,3 @@ function b_chords:in_1_reload()
 	bhack = require("bhack")
 	self:initialize()
 end
-

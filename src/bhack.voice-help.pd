@@ -1,4 +1,4 @@
-#N canvas 0 0 640 480 10;
+#N canvas 0 0 925 1132 10;
 #X declare -lib else;
 #X obj 528 380 declare -lib else;
 #X obj 29 119 bhack.define;
@@ -7,7 +7,7 @@
 #X obj 215 99 tgl 18 0 empty empty empty 0 -9 0 10 #fcfcfc #000000 #000000 0 1;
 #X obj 29 382 bhack.voice;
 #X msg 69 202 play;
-#N canvas 319 307 391 456 score 1;
+#N canvas 0 0 925 1132 score 0;
 #X obj 44 227 dac~;
 #X obj 44 29 inlet;
 #X obj 44 133 else/plaits~ -tr_active -model 11 -midi;
@@ -49,6 +49,9 @@
 #X obj 29 93 t a b b b, f 26;
 #X msg 86 223 bpm 90;
 #X listbox 29 476 11 0 0 0 - - - 12;
+#X obj 422 317 bhack.print;
+#X obj 507 334 bhack.length;
+#X obj 507 356 nbx 5 16 -1e+37 1e+37 0 0 empty empty empty 0 -9 0 10 #fcfcfc #000000 #000000 0 256;
 #X connect 1 0 5 0;
 #X connect 2 0 5 0;
 #X connect 3 0 2 0;
@@ -64,6 +67,8 @@
 #X connect 14 0 13 0;
 #X connect 15 0 14 0;
 #X connect 16 0 5 1;
+#X connect 16 0 35 0;
+#X connect 16 0 36 0;
 #X connect 17 0 21 0;
 #X connect 18 0 19 0;
 #X connect 19 0 16 1;
@@ -84,3 +89,4 @@
 #X connect 32 3 15 0;
 #X connect 33 0 5 0;
 #X connect 34 0 7 0;
+#X connect 36 0 37 0;

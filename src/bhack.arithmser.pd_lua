@@ -5,7 +5,7 @@ local b_arithm = pd.Class:new():register("bhack.arithmser")
 function b_arithm:initialize(name, args)
 	self.inlets = 3
 	self.outlets = 1
-	if #args == 3 then 
+	if #args == 3 then
 		self.first = args[1]
 		self.last = args[2]
 		self.step = tonumber(args[3])

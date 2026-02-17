@@ -70,26 +70,27 @@ function M:new_fromid(pdobj, id)
 end
 
 -- ─────────────────────────────────────
+function M.deep_copy_table(self, obj)
+	if type(obj) ~= "table" then
+		local copy = obj
+		return copy
+	else
+		local copy = {}
+		for k, v in pairs(obj) do
+			copy[k] = v
+		end
+		return copy
+	end
+end
+
+-- ─────────────────────────────────────
 function M.get_ddddfromid(pdobj, id)
 	local original = _G.dddd_outlets[id]
 	if not original then
 		error("dddd with id " .. tostring(id) .. " not found")
 	end
 
-	local function deep_copy_table(obj)
-		if type(obj) ~= "table" then
-			local copy = obj
-			return copy
-		else
-			local copy = {}
-			for k, v in pairs(obj) do
-				copy[k] = v
-			end
-			return copy
-		end
-	end
-
-	local cloned_table = deep_copy_table(original:get_table())
+	local cloned_table = M.deep_copy_table(original:get_table())
 	local cloned = M:new_fromtable(pdobj, cloned_table)
 	return cloned
 end
@@ -103,6 +104,20 @@ function M:output(i)
 	_G.dddd_outlets[str] = nil -- clear memory
 end
 
+-- ─────────────────────────────────────
+function M:get_table_depth()
+	if type(self.table) ~= "table" then
+		return 0
+	end
+	local max_depth = 0
+	for _, v in ipairs(self.table) do
+		local d = self:get_depth(v)
+		if d > max_depth then
+			max_depth = d
+		end
+	end
+	return max_depth + 1
+end
 -- ─────────────────────────────────────
 function M:get_depth(tbl)
 	if type(tbl) ~= "table" then
@@ -170,6 +185,7 @@ end
 -- ─────────────────────────────────────
 function M:print()
 	if type(self.table) ~= "table" then
+		pd.post(self.table)
 		return
 	end
 

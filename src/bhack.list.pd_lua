@@ -29,8 +29,9 @@ end
 -- ─────────────────────────────────────
 function b_list:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.get_dddd_fromid(self, id)
+	local dddd = bhack.dddd:new_fromid(self, id)
 	self.inlet_data[1] = dddd:get_table()
+
 	local dddd_new = bhack.dddd:new_fromtable(self, self.inlet_data)
 	dddd_new:output(1)
 end

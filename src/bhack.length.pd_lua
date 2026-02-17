@@ -1,4 +1,4 @@
-local _ = require("bhack")
+local bhack = require("bhack")
 local b_len = pd.Class:new():register("bhack.length")
 
 -- ─────────────────────────────────────
@@ -13,7 +13,8 @@ end
 function b_len:in_1_dddd(atoms)
 	local id = atoms[1]
 	local dddd = bhack.dddd:new_fromid(self, id)
-	self:outlet(1, "float", { #t })
+
+	self:outlet(1, "float", { #dddd:get_table() })
 end
 
 -- ─────────────────────────────────────

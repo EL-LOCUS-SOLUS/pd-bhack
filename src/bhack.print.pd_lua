@@ -16,7 +16,6 @@ function b_print:in_1_dddd(atoms)
 	if dddd == nil then
 		error("dddd not found")
 	end
-
 	dddd:print()
 end
 

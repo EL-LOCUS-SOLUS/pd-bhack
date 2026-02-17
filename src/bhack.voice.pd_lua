@@ -341,7 +341,7 @@ function b_voice:in_1_dddd(atoms)
 		return
 	end
 
-    -- pd.post("quantos compassos: ".. #self.rhythm_tree_spec)
+	-- pd.post("quantos compassos: ".. #self.rhythm_tree_spec)
 
 	self.rhythm_tree_spec = t
 	self.Score:set_material({
@@ -416,7 +416,7 @@ function b_voice:in_1_save(atoms)
 		file:write(self.svg)
 		file:close()
 	elseif path:match("%.musicxml$") then
-        local curr_path = self:get_canvas_dir() .. "/" .. path
+		local curr_path = self:get_canvas_dir() .. "/" .. path
 		self.Score:export_voice_musicxml(curr_path)
 		return
 	else
@@ -444,7 +444,6 @@ function b_voice:paint(g)
 
 	local max_measure_end_x = get_max_measure_end_x(self.Score and self.Score.ctx)
 	self.max_measure_end_x = max_measure_end_x
-
 
 	g:set_color(247, 247, 247)
 	g:fill_all()
@@ -506,7 +505,8 @@ function b_voice:paint_layer_2(g)
 			local last_measure = self.last_advanced_from_measure or 0
 			local last_offset = self.last_advanced_from_offset or -1
 			local offset_delta = offset_ms - last_offset
-			local allow_update = (last_measure < (play_measure or 0)) or ((play_measure or 0) == last_measure and offset_delta > 1)
+			local allow_update = (last_measure < (play_measure or 0))
+				or ((play_measure or 0) == last_measure and offset_delta > 1)
 			if allow_update then
 				self.last_advanced_from_measure = play_measure
 				self.last_advanced_from_offset = offset_ms

@@ -17,13 +17,15 @@ function iterate:in_1_dddd(atoms)
 		self:bhack_error("dddd not found")
 		return
 	end
-
 	bhack.dddd:new_fromtable(self, { "begin" }):output(1)
 	local t = dddd:get_table()
-	for i, v in ipairs(t) do
+
+	for _, v in ipairs(t) do
 		local dddd_i = bhack.dddd:new_fromtable(self, v)
 		dddd_i:output(2)
+
 	end
+
 	bhack.dddd:new_fromtable(self, { "end" }):output(1)
 end
 

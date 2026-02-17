@@ -97,6 +97,7 @@ end
 function b_op:in_1_dddd(atoms)
 	local id = atoms[1]
 	local dddd = bhack.dddd:new_fromid(self, id)
+
 	self.dddd1 = dddd
 	self:process_and_output()
 end
@@ -104,7 +105,8 @@ end
 -- ─────────────────────────────────────
 function b_op:in_2_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.get_dddd_fromid(self, id)
+	local dddd = bhack.dddd:new_fromid(self, id)
+
 	self.dddd2 = dddd
 end
 
@@ -125,4 +127,3 @@ function b_op:in_1_reload()
 	self:dofilex(self._scriptname)
 	self:initialize(self._name, self.args)
 end
-
