@@ -368,7 +368,7 @@ function Tuplet:new(up_value, rhythms, parent_context)
 			obj.require_draw = false
 		end
 	elseif parent_context.meter_type == "ternary" then
-		pd.post("ternary measure")
+		-- pd.post("ternary measure")
 	else
 		pd.post("Complex and irregular time signatures are not very well supported yet")
 	end

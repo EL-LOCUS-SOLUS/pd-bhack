@@ -1,7 +1,5 @@
 local b_voice = pd.Class:new():register("bhack.voice")
 local bhack = require("bhack")
-
--- local m2n = require("bhack").utils.m2n
 local n2m = require("bhack").utils.n2m
 
 --╭─────────────────────────────────────╮
@@ -17,7 +15,6 @@ function b_voice:initialize(_, args)
 		{ notes = { "C4" }, noteheads = { "n" } },
 		{ notes = { "C4" }, noteheads = { "n" } },
 		{ notes = { "C4" }, noteheads = { "n" } },
-
 	}
 	--self.CHORDS = { { notes = { "C4" }, noteheads = { "ord" } } }
 	self.rhythm_tree_spec = { { { 4, 4 }, { 1, 1, 1, 1 } } } -- default input
@@ -41,6 +38,20 @@ function b_voice:initialize(_, args)
 	self.entry = nil
 	self.previous_entry = nil
 	self.midiplayback = true
+
+	-- Playback
+	if args then
+		local i = 1
+		while i <= #args do
+			local v = args[i]
+			if v == "-playchords" then
+				i = i + 1
+				self.midiplayback = false
+			else
+				error("[bhack.define] Wrong arguments")
+			end
+		end
+	end
 
 	-- Initialize Score
 	self.Score = bhack.score.Score:new(self.width, self.height)
@@ -189,57 +200,6 @@ local function is_rhythm_tree(tbl)
 end
 
 -- ─────────────────────────────────────
-local function chord_entry_to_named(entry)
-	if type(entry) ~= "table" then
-		return { name = tostring(entry), notes = { tostring(entry) } }
-	end
-	if entry.name and entry.notes then
-		-- Already normalized
-		return { name = tostring(entry.name), notes = entry.notes }
-	end
-	if #entry >= 2 and type(entry[1]) == "string" and type(entry[2]) == "table" then
-		return { name = entry[1], notes = entry[2] }
-	end
-	local all_str = true
-	for _, n in ipairs(entry) do
-		if type(n) ~= "string" then
-			all_str = false
-			break
-		end
-	end
-	if all_str and #entry > 0 then
-		return { name = table.concat(entry, "-"), notes = entry }
-	end
-	-- Fallback
-	return { name = "?", notes = {} }
-end
-
--- ─────────────────────────────────────
-local function normalize_chords_list(raw)
-	local chords = {}
-	if type(raw) ~= "table" then
-		return chords
-	end
-
-	local flat_all_strings = true
-	for _, v in ipairs(raw) do
-		if type(v) ~= "string" then
-			flat_all_strings = false
-			break
-		end
-	end
-
-	if flat_all_strings then
-		return { { name = table.concat(raw, "-"), notes = raw } }
-	end
-
-	for _, entry in ipairs(raw) do
-		table.insert(chords, chord_entry_to_named(entry))
-	end
-	return chords
-end
-
--- ─────────────────────────────────────
 local function get_max_measure_end_x(ctx)
 	if not ctx or type(ctx.measure_meta) ~= "table" then
 		return nil
@@ -355,6 +315,8 @@ function b_voice:in_1_dddd(atoms)
 		return
 	end
 
+	self.playbar_position = 0
+
 	-- Accept either a full rendering ctx (already built) or a material table.
 	-- voicebuilder outputs a material-like table (clef/tree/chords/bpm) without `draw`,
 	-- but Score:set_material only computes spacing_sequence when draw is truthy.
@@ -395,11 +357,7 @@ function b_voice:in_1_dddd(atoms)
 	end
 	self.Score:set_material(t)
 	self:repaint()
-	return
 end
-
--- ─────────────────────────────────────
-function b_voice:in_1_getdata() end
 
 -- ─────────────────────────────────────
 function b_voice:in_1_play()
@@ -444,10 +402,10 @@ end
 function b_voice:in_1_midiplayback(atoms)
 	if atoms[1] > 0 then
 		self.midiplayback = true
-		pd.post("midiplayback on")
+		self.logpost(2, "midiplayback on")
 	else
 		self.midiplayback = false
-		pd.post("midiplayback off")
+		self.logpost(2, "midiplayback off")
 	end
 end
 
@@ -480,7 +438,6 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:paint(g)
-	--pd.post("Repainting voice")
 	self.svg = self.Score:getsvg()
 
 	if self.svg == nil then
@@ -490,11 +447,6 @@ function b_voice:paint(g)
 	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
 		self.Score:get_onsets(self.playbar_position)
 	self.awaiting_render = false
-
-	local errors = self.Score:get_errors()
-	if #errors > 0 then
-		-- self:error("Seems that the score is small for the score")
-	end
 
 	local max_measure_end_x = get_max_measure_end_x(self.Score and self.Score.ctx)
 	self.max_measure_end_x = max_measure_end_x
@@ -533,7 +485,7 @@ function b_voice:paint_layer_2(g)
 		end
 		g:fill_rect(pos - 1, padding, 1, self.height - (padding * 2))
 
-		if pos > self.width * 0.8 then
+		if pos > self.width * 0.9 then
 			local play_measure = self.current_play_measure or self.current_measure
 			local offset_ms = self.current_play_measure_offset or 0
 			local total_measures = (self.Score and self.Score.ctx and #(self.Score.ctx.measures or {})) or 0

@@ -257,11 +257,11 @@ function b_voice:in_2_dddd(atoms)
 	local id = atoms[1]
 	local dddd = bhack.dddd:new_fromid(self, id)
 	if dddd == nil then
-		self:bhack_error("dddd not found")
+		error("[bhack.voicebuild] dddd not found")
 		return
 	end
 	if dddd.depth == 1 then
-		error("dddd must be of depth 2 for chords/arpeggios")
+		error("[bhack.voicebuild] dddd must be of depth 2 for chords/arpeggios")
 	else
 		self.chords_raw = dddd:get_table()
 		local chords_size = #self.chords_raw
