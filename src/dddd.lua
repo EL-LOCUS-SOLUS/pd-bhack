@@ -38,6 +38,11 @@ function M:settype(typename)
 end
 
 -- ─────────────────────────────────────
+function M:gettype()
+	return self.type or nil
+end
+
+-- ─────────────────────────────────────
 function M:asserttype(typename)
 	if typename ~= self.type then
 		self.pdobj:error("[" .. self.pdobj._name .. "] Expected type " .. self.type .. " received type " .. typename)

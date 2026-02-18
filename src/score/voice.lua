@@ -6,6 +6,18 @@ local rhythm = require("score.rhythm")
 local Voice = {}
 Voice.__index = Voice
 
+local function extract_notehead_name_from_glyph(glyph)
+	if type(glyph) ~= "string" then
+		return nil
+	end
+	-- Expected forms: noteheadBlack | noteheadHalf | noteheadWhole | noteheadXBlack | noteheadPlusHalf ...
+	local name, suffix = glyph:match("^notehead(.*)(Black|Half|Whole)$")
+	if suffix then
+		return name or ""
+	end
+	return nil
+end
+
 local function chord_to_blueprint(chord)
 	utils.log("chord_to_blueprint", 2)
 	if not chord then
@@ -13,17 +25,22 @@ local function chord_to_blueprint(chord)
 	end
 	local blueprint = { name = chord.name, notes = {} }
 	for _, note in ipairs(chord.notes or {}) do
+		local notehead_name = nil
+		if note.has_explicit_notehead then
+			notehead_name = extract_notehead_name_from_glyph(note.notehead)
+			-- If we can't parse a name, fall back to the original glyph string.
+			notehead_name = notehead_name or note.notehead
+		end
 		blueprint.notes[#blueprint.notes + 1] = {
 			pitch = note.raw,
-			notehead = note.notehead,
+			notehead = notehead_name,
 			explicit = note.has_explicit_notehead or false,
-			figure = note.figure,
-			duration = note.duration,
 		}
 	end
 	return blueprint
 end
 
+-- ─────────────────────────────────────
 local function instantiate_chord_blueprint(blueprint, entry_info, target)
 	utils.log("instantiate_chord_blueprint", 2)
 	if not blueprint then
@@ -33,15 +50,11 @@ local function instantiate_chord_blueprint(blueprint, entry_info, target)
 	for _, bn in ipairs(blueprint.notes or {}) do
 		local spec = {
 			pitch = bn.pitch,
-			figure = bn.figure,
-			duration = bn.duration,
-			value = bn.duration,
+			notehead = bn.notehead,
 		}
-		if bn.explicit and bn.notehead then
-			spec.notehead = bn.notehead
-		end
 		note_specs[#note_specs + 1] = spec
 	end
+
 	if target then
 		target.name = blueprint.name or target.name or ""
 		target:populate_notes(note_specs)
@@ -50,6 +63,7 @@ local function instantiate_chord_blueprint(blueprint, entry_info, target)
 	return notes.Chord:new(blueprint.name, note_specs, entry_info)
 end
 
+-- ─────────────────────────────────────
 local function assign_tuplet_directions(chords, tuplets, clef_key)
 	utils.log("assign_tuplet_directions", 2)
 	local lookup = {}
@@ -129,6 +143,7 @@ local function assign_tuplet_directions(chords, tuplets, clef_key)
 	return lookup
 end
 
+-- ─────────────────────────────────────
 function Voice:new(material)
 	local obj = setmetatable({}, self)
 	obj.material = material or {}
@@ -213,12 +228,17 @@ function Voice:new(material)
 	local chord_cursor = 1
 	local last_blueprint = nil
 	local pending_tie_blueprint = nil
+	local default_blueprint = {
+		name = "C4",
+		notes = { { pitch = "C4" } },
+	}
 
 	for measure_index, m in ipairs(obj.measures) do
 		for entry_index, element in ipairs(m.entries or {}) do
 			element.measure_index = element.measure_index or measure_index
 			element.index = element.index or entry_index
-			element.spacing_multiplier = element.spacing_multiplier or rhythm.figure_spacing_multiplier(element.duration)
+			element.spacing_multiplier = element.spacing_multiplier
+				or rhythm.figure_spacing_multiplier(element.duration)
 			obj.chords[#obj.chords + 1] = element
 
 			local tie_blueprint = pending_tie_blueprint
@@ -227,15 +247,18 @@ function Voice:new(material)
 			if not element.is_rest then
 				if not (element.notes and #element.notes > 0) then
 					if tie_blueprint then
-						instantiate_chord_blueprint(tie_blueprint, { notehead = element.notehead }, element)
+						instantiate_chord_blueprint(tie_blueprint, {}, element)
 					else
 						local spec = chords_mat[chord_cursor]
 						if spec then
-							element.name = spec.name or element.name or ""
-							element:populate_notes(spec.notes or {})
+							element:populate_notes(spec)
 							chord_cursor = chord_cursor + 1
 						elseif last_blueprint then
-							instantiate_chord_blueprint(last_blueprint, { notehead = element.notehead }, element)
+							instantiate_chord_blueprint(last_blueprint, {}, element)
+						else
+							-- No chord material provided at all: still render something,
+							-- but keep rhythm (figure/duration) from the tree.
+							instantiate_chord_blueprint(default_blueprint, {}, element)
 						end
 					end
 				end
@@ -253,6 +276,7 @@ function Voice:new(material)
 	return obj
 end
 
+-- ─────────────────────────────────────
 function Voice:set_current_measure_position(position)
 	local pos = math.tointeger(position) or tonumber(position) or 1
 	if not pos or pos < 1 then

@@ -1,5 +1,6 @@
 local utils = require("score/utils")
 local internal_utils = require("score/utils/init")
+local rhythm = require("score.rhythm")
 
 local Note = {}
 Note.__index = Note
@@ -10,11 +11,71 @@ Rest.__index = Rest
 local Chord = {}
 Chord.__index = Chord
 
+-- ─────────────────────────────────────
+local function trim_string(s)
+	if type(s) ~= "string" then
+		return s
+	end
+	return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- ─────────────────────────────────────
+local function normalize_notehead_name(raw)
+	if raw == nil then
+		return nil
+	end
+	if type(raw) ~= "string" then
+		raw = tostring(raw)
+	end
+	local s = trim_string(raw)
+	if s == nil then
+		return nil
+	end
+	local lower = s:lower()
+	-- Common ways to say “use default”
+	if lower == "" or lower == "ord" or lower == "default" or lower == "normal" or lower == "n" then
+		return ""
+	end
+	return s
+end
+
+-- ─────────────────────────────────────
+local function chord_figure_notehead_suffix(chord)
+	local base = chord and chord.notehead
+	if type(base) ~= "string" or not base:match("^notehead") then
+		base = (rhythm.figure_to_notehead(chord and chord.value, chord and chord.min_figure))
+	end
+	local suffix = type(base) == "string" and base:match("^notehead(.+)$") or nil
+	if not suffix or suffix == "" then
+		suffix = "Black"
+	end
+	return suffix, base
+end
+
+-- ─────────────────────────────────────
+local function resolve_notehead_glyph(name_or_glyph, figure_suffix)
+	local s = normalize_notehead_name(name_or_glyph)
+	if s == nil then
+		return nil
+	end
+	if s:match("^notehead") then
+		if s == "notehead" then
+			return "notehead" .. tostring(figure_suffix or "Black")
+		end
+		return s
+	end
+	return "notehead" .. s .. tostring(figure_suffix or "Black")
+end
+
+-- ─────────────────────────────────────
 local function build_chord_notes(chord, notes)
 	utils.log("build_chord_notes", 2)
 	chord.notes = {}
+	local figure_suffix, default_glyph = chord_figure_notehead_suffix(chord)
 	for _, entry in ipairs(notes) do
 		local note_spec = internal_utils.clone_note_entry(entry)
+		local explicit_notehead = note_spec.notehead
+		local resolved = resolve_notehead_glyph(explicit_notehead, figure_suffix) or default_glyph
 		local pitch = note_spec.pitch or note_spec.raw or note_spec.note or note_spec[1] or entry
 		local note_obj = Note:new(pitch, {
 			duration = chord.duration,
@@ -23,13 +84,15 @@ local function build_chord_notes(chord, notes)
 			min_figure = chord.min_figure,
 			is_tied = chord.is_tied or false,
 			stem = chord.stem,
-			notehead = chord.notehead,
+			notehead = resolved,
+			has_explicit_notehead = (explicit_notehead ~= nil),
 			chord = chord,
 		})
 		table.insert(chord.notes, note_obj)
 	end
 end
 
+-- ─────────────────────────────────────
 function Note:new(pitch, config)
 	assert(pitch, "Note pitch is required")
 
@@ -48,11 +111,11 @@ function Note:new(pitch, config)
 	return obj
 end
 
+-- ─────────────────────────────────────
 function Chord:new(name, notes, entry_info)
 	local obj = setmetatable({}, self)
 	obj.name = name or ""
 	obj.notes = {}
-
 	obj.stem = "stem"
 	obj.notehead = "noteheadBlack"
 
@@ -76,11 +139,37 @@ function Chord:new(name, notes, entry_info)
 	return obj
 end
 
-function Chord:populate_notes(notes)
+function Chord:populate_notes(notes_or_spec)
 	utils.log("build_chord_notes", 2)
 	self.notes = {}
-	for _, entry in ipairs(notes) do
+	local figure_suffix, default_glyph = chord_figure_notehead_suffix(self)
+
+	-- Supports:
+	-- 1) legacy list: { "C4", "E4" } or { {pitch=...}, ... }
+	-- 2) spec: { notes = {...}, noteheads = {"X", "Plus", ...} }
+	local notes = notes_or_spec
+	local noteheads = nil
+	if type(notes_or_spec) == "table" and type(notes_or_spec.notes) == "table" then
+		notes = notes_or_spec.notes
+		noteheads = notes_or_spec.noteheads
+	end
+
+	if type(notes) ~= "table" then
+		return self
+	end
+	local last_name_or_glyph = nil
+	for k, entry in ipairs(notes) do
 		local note_spec = internal_utils.clone_note_entry(entry)
+
+		-- Priority:
+		-- - per-note noteheads[k] from spec
+		-- - note_spec.notehead (from blueprints / external callers)
+		-- - last provided value (so users can send shorter notehead lists)
+		local name_or_glyph = (noteheads and noteheads[k]) or note_spec.notehead or last_name_or_glyph
+		if name_or_glyph ~= nil then
+			last_name_or_glyph = name_or_glyph
+		end
+		local resolved = resolve_notehead_glyph(name_or_glyph, figure_suffix) or default_glyph
 		local pitch = note_spec.pitch or note_spec.raw or note_spec.note or note_spec[1] or entry
 		local note_obj = Note:new(pitch, {
 			duration = self.duration,
@@ -89,12 +178,18 @@ function Chord:populate_notes(notes)
 			min_figure = self.min_figure,
 			is_tied = self.is_tied or false,
 			stem = self.stem,
-			notehead = self.notehead,
+			notehead = resolved,
+			has_explicit_notehead = (name_or_glyph ~= nil),
 			chord = self,
 		})
 		table.insert(self.notes, note_obj)
 	end
 	return self
+end
+
+-- Backwards compatibility
+function Chord:populate_notes_new(notes_spec)
+	return self:populate_notes(notes_spec)
 end
 
 function Rest:new(entry_info)

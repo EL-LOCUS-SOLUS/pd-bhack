@@ -12,10 +12,16 @@ local Score = {}
 Score.__index = Score
 M.Score = Score
 
+-- ─────────────────────────────────────
 function Score:new(w, h)
 	local obj = setmetatable({}, self)
-	obj.w = w
-	obj.h = h
+	if not w and not h then
+		obj.w = 250
+		obj.h = 70
+	else
+		obj.w = w
+		obj.h = h
+	end
 	obj.current_measure_position = 1
 	if not M.__font_singleton then
 		M.__font_singleton = font.FontLoaded:new()
@@ -24,10 +30,23 @@ function Score:new(w, h)
 	return obj
 end
 
+-- ─────────────────────────────────────
 function Score:set_vertical_padding(padding)
 	self.default_clef_layout.padding_spaces = padding
 end
 
+-- ─────────────────────────────────────
+function Score:set_ctx(ctx)
+	pd.post(#ctx.chords)
+	self.ctx = ctx
+end
+
+-- ─────────────────────────────────────
+function Score:get_ctx()
+	return self.ctx
+end
+
+-- ─────────────────────────────────────
 function Score:set_material(material)
 	self.render_tree = material.render_tree
 	self.clef_name_or_key = material.clef
@@ -60,7 +79,6 @@ function Score:set_material(material)
 
 	local bottom = clef_cfg.bottom_line
 	local bottom_value = geometry.diatonic_value(M.DIATONIC_STEPS, bottom.letter:upper(), bottom.octave)
-
 	local tuplet_directions = voice.assign_tuplet_directions(chords, v.tuplets, clef_cfg.key)
 
 	self.ctx = {
@@ -109,6 +127,9 @@ function Score:set_material(material)
 		time_unity = 4,
 		render_tree = self.render_tree,
 	}
+	if not material.draw then
+		return
+	end
 
 	self.ctx.tuplet_base_y = self.ctx.staff.top - (self.ctx.staff.spacing * 0.9)
 	self.ctx.tuplet_vertical_gap = self.ctx.staff.spacing * 2.5
@@ -156,6 +177,7 @@ function Score:set_material(material)
 	self:set_current_measure_position(self.current_measure_position)
 end
 
+-- ─────────────────────────────────────
 function Score:set_current_measure_position(position)
 	local pos = math.tointeger(position) or tonumber(position) or 1
 	if not pos or pos < 1 then
@@ -175,10 +197,14 @@ function Score:set_current_measure_position(position)
 	end
 end
 
+-- ─────────────────────────────────────
+
+-- ─────────────────────────────────────
 function Score:set_bpm(bpm)
 	self.ctx.bpm = bpm
 end
 
+-- ─────────────────────────────────────
 function Score:get_onsets(playbar_position)
 	local start_measure = math.tointeger(self.ctx.current_measure_position) or 1
 	if start_measure < 1 then
@@ -255,10 +281,12 @@ function Score:get_onsets(playbar_position)
 	return indexed, last_onset, current_measure, current_measure_offset_ms
 end
 
+-- ─────────────────────────────────────
 function Score:get_errors()
 	return self.ctx and self.ctx.error or {}
 end
 
+-- ─────────────────────────────────────
 function Score:export_voice_musicxml(path)
 	local measures = self.ctx.measures or {}
 
@@ -402,6 +430,7 @@ function Score:export_voice_musicxml(path)
 	return true
 end
 
+-- ─────────────────────────────────────
 function Score:getsvg()
 	assert(self.ctx, "Paint context is nil, this is a fatal error and should not happen.")
 	assert(type(self.ctx.width) == "number", "Invalid width for SVG")

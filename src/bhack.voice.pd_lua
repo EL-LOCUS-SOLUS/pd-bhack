@@ -12,7 +12,14 @@ function b_voice:initialize(_, args)
 	self.outlets = 2
 
 	-- Material
-	self.CHORDS = { { name = "C4", notes = { "C4" } } }
+	self.chords_raw = { { "C4" }, { "C4" }, { "C4" } }
+	self.CHORDS = {
+		{ notes = { "C4" }, noteheads = { "n" } },
+		{ notes = { "C4" }, noteheads = { "n" } },
+		{ notes = { "C4" }, noteheads = { "n" } },
+
+	}
+	--self.CHORDS = { { notes = { "C4" }, noteheads = { "ord" } } }
 	self.rhythm_tree_spec = { { { 4, 4 }, { 1, 1, 1, 1 } } } -- default input
 	self.current_clef_key = "g"
 
@@ -42,7 +49,9 @@ function b_voice:initialize(_, args)
 		render_tree = true,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
+		noteheads = self.noteheads,
 		bpm = self.bpm,
+		draw = true,
 	})
 
 	return true
@@ -270,6 +279,7 @@ function b_voice:in_1_size(args)
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
+		draw = true,
 	})
 
 	self:repaint()
@@ -286,6 +296,7 @@ function b_voice:in_1_fontsize(args)
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
+		draw = true,
 	})
 	self:repaint()
 end
@@ -307,8 +318,9 @@ function b_voice:in_1_clef(args)
 		clef = self.current_clef_key,
 		render_tree = true,
 		tree = self.rhythm_tree_spec,
-		chords = normalize_chords_list(self.CHORDS),
+		chords = self.CHORDS,
 		bpm = self.bpm,
+		draw = true,
 	})
 
 	self:repaint()
@@ -321,8 +333,9 @@ function b_voice:in_1_bpm(args)
 		clef = self.current_clef_key,
 		render_tree = true,
 		tree = self.rhythm_tree_spec,
-		chords = normalize_chords_list(self.CHORDS),
+		chords = self.CHORDS,
 		bpm = self.bpm,
+		draw = true,
 	})
 	self:repaint()
 end
@@ -335,25 +348,58 @@ function b_voice:in_1_dddd(atoms)
 		self:bhack_error("dddd not found")
 		return
 	end
+
 	local t = dddd:get_table()
-	if not is_rhythm_tree(t) then
-		self:bhack_error("Input is not a valid rhythm tree")
+	if type(t) ~= "table" then
+		self:bhack_error("dddd payload is not a table")
 		return
 	end
 
-	-- pd.post("quantos compassos: ".. #self.rhythm_tree_spec)
+	-- Accept either a full rendering ctx (already built) or a material table.
+	-- voicebuilder outputs a material-like table (clef/tree/chords/bpm) without `draw`,
+	-- but Score:set_material only computes spacing_sequence when draw is truthy.
+	if t.staff ~= nil and t.clef ~= nil and t.measures ~= nil and t.chords ~= nil then
+		self.Score:set_ctx(t)
+		self:repaint()
+		return
+	end
 
-	self.rhythm_tree_spec = t
-	self.Score:set_material({
-		clef = self.current_clef_key,
-		render_tree = true,
-		tree = self.rhythm_tree_spec,
-		chords = normalize_chords_list(self.CHORDS),
-		bpm = self.bpm,
-	})
+	-- If it's a rhythm-tree (e.g. coming directly from bhack.dddd), rebuild full material.
+	if is_rhythm_tree(t) then
+		self.rhythm_tree_spec = t
+		self.Score:set_material({
+			clef = self.current_clef_key,
+			render_tree = true,
+			tree = self.rhythm_tree_spec,
+			chords = self.CHORDS,
+			bpm = self.bpm,
+			draw = true,
+		})
+		self:repaint()
+		return
+	end
 
+	-- Otherwise assume it's a material-like table (e.g. from voicebuilder).
+	-- Ensure required keys exist before passing to Score:set_material.
+	t.clef = t.clef or self.current_clef_key
+	t.render_tree = (t.render_tree ~= nil) and t.render_tree or true
+	t.tree = t.tree or self.rhythm_tree_spec
+	t.chords = t.chords or self.CHORDS
+	t.bpm = t.bpm or self.bpm
+	if t.draw == nil then
+		t.draw = true
+	end
+	if t.chords == nil then
+		self:bhack_error("Material missing chords")
+		return
+	end
+	self.Score:set_material(t)
 	self:repaint()
+	return
 end
+
+-- ─────────────────────────────────────
+function b_voice:in_1_getdata() end
 
 -- ─────────────────────────────────────
 function b_voice:in_1_play()
@@ -382,7 +428,15 @@ function b_voice:in_2_dddd(atoms)
 	if dddd.depth == 1 then
 		error("dddd must be of depth 2 for chords/arpeggios")
 	else
-		self.CHORDS = dddd:get_table()
+		local raw = dddd:get_table()
+		-- Match voicebuilder behavior: raw is a depth-2 list of pitch strings.
+		-- Merge into existing chord specs so noteheads (if present) are preserved.
+		self.chords_raw = raw
+		local chords_size = type(raw) == "table" and #raw or 0
+		for i = 1, chords_size do
+			self.CHORDS[i] = self.CHORDS[i] or {}
+			self.CHORDS[i].notes = raw[i]
+		end
 	end
 end
 

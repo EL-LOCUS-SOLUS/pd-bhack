@@ -34,6 +34,7 @@ local function instantiate_inline_chord(spec, entry_info)
 	return notes.Chord:new(spec.name or "", notes_list, entry_info)
 end
 
+-- ─────────────────────────────────────
 function Measure:new(time_sig, tree, number)
 	local measure_sum = 0
 	for i = 1, #tree do
@@ -57,6 +58,7 @@ function Measure:new(time_sig, tree, number)
 	return obj
 end
 
+-- ─────────────────────────────────────
 function Measure:is_tuplet()
 	local numerator = self.time_sig[1] or 0
 	local sum = self.measure_sum or 0
@@ -66,7 +68,16 @@ function Measure:is_tuplet()
 	return is_tuplet
 end
 
-function Measure:append_value_entry(raw_value, inline_chord, parent_tuplet, total, container_duration, min_figure, is_tied)
+-- ─────────────────────────────────────
+function Measure:append_value_entry(
+	raw_value,
+	inline_chord,
+	parent_tuplet,
+	total,
+	container_duration,
+	min_figure,
+	is_tied
+)
 	local value = math.abs(raw_value or 0)
 	if total == 0 then
 		total = 1
@@ -120,6 +131,7 @@ function Measure:append_value_entry(raw_value, inline_chord, parent_tuplet, tota
 	return element
 end
 
+-- ─────────────────────────────────────
 function Measure:expand_level(rhythms, container_duration, parent_tuplet, measure_min_figure, parent_min_figure)
 	local total = rhythm.rhythm_sum(rhythms)
 	if total == 0 then
@@ -182,6 +194,7 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 	end
 end
 
+-- ─────────────────────────────────────
 function Measure:build()
 	local t_amount = self.time_sig[1]
 	local t_fig = self.time_sig[2]
@@ -204,11 +217,13 @@ function Measure:build()
 	self:expand_level(self.tree or {}, measure_whole, nil, self.min_figure, self.min_figure)
 end
 
+-- ─────────────────────────────────────
 function Measure:get_measure_min_fig()
 	local fig = (self.measure_sum / self.time_sig[1]) * self.time_sig[2]
 	self.min_figure = utils.floor_pow2(fig)
 end
 
+-- ─────────────────────────────────────
 function Measure:set_current_measure_position(position)
 	local pos = math.tointeger(position) or tonumber(position) or 1
 	if not pos or pos < 1 then
@@ -219,6 +234,7 @@ function Measure:set_current_measure_position(position)
 	return self.is_visible
 end
 
+-- ─────────────────────────────────────
 local function build_measure_meta(voice_measures)
 	utils.log("build_measure_meta", 2)
 	local meta = {}
@@ -254,6 +270,7 @@ local function build_measure_meta(voice_measures)
 	return meta
 end
 
+-- ─────────────────────────────────────
 local function compute_spacing_from_measures(ctx, measures)
 	utils.log("compute_spacing_from_measures", 2)
 	local base_spacing = ctx.note.spacing or 0

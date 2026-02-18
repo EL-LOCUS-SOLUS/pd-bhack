@@ -8,7 +8,7 @@ local function should_render_stem(note)
 		return false
 	end
 	local head = note.notehead
-	if head == "noteheadWhole" then
+	if type(head) == "string" and head:match("Whole$") then
 		return false
 	end
 	return true

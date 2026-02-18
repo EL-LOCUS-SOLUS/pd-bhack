@@ -79,12 +79,15 @@ local function chord_to_blueprint(chord)
 	end
 	local blueprint = { name = chord.name, notes = {} }
 	for _, note in ipairs(chord.notes or {}) do
+		local notehead_name = nil
+		if note.has_explicit_notehead and type(note.notehead) == "string" then
+			local name = note.notehead:match("^notehead(.*)(Black|Half|Whole)$")
+			notehead_name = name or note.notehead
+		end
 		blueprint.notes[#blueprint.notes + 1] = {
 			pitch = note.raw,
-			notehead = note.notehead,
+			notehead = notehead_name,
 			explicit = note.has_explicit_notehead or false,
-			figure = note.figure,
-			duration = note.duration,
 		}
 	end
 	return blueprint
@@ -123,6 +126,7 @@ local function prepare_measure_lookups(state)
 	return state
 end
 
+-- ─────────────────────────────────────
 local function prepare_tuplet_lookups(state)
 	utils.log("prepare_tuplet_lookups", 2)
 	state.tuplet_bucket_lookup = state.tuplet_bucket_lookup or {}
@@ -149,6 +153,7 @@ local function prepare_tuplet_lookups(state)
 	return state
 end
 
+-- ─────────────────────────────────────
 local function apply_measure_start(state)
 	utils.log("apply_measure_start", 2)
 	local position_index = state.current_position_index
@@ -191,6 +196,7 @@ local function apply_measure_start(state)
 	return state
 end
 
+-- ─────────────────────────────────────
 local function advance_position(state)
 	utils.log("advance_position", 2)
 	local index = state.current_position_index
@@ -211,6 +217,7 @@ local function advance_position(state)
 	return state
 end
 
+-- ─────────────────────────────────────
 local function handle_measure_number(state)
 	utils.log("handle_measure_number", 2)
 	if not state or not state.measure_number_svg then
@@ -228,6 +235,10 @@ local function handle_measure_number(state)
 		local meta = state.start_lookup and state.start_lookup[first_entry_index]
 		local measure = meta and meta.measure
 		local measure_number = (measure and measure.measure_number) or (meta and meta.index) or first_measure_index
+		if measure_number == 1 then
+			return state
+		end
+
 		if measure_number and meta and not meta.measure_number_rendered then
 			local label = tostring(measure_number)
 			if label ~= "" then
@@ -366,15 +377,7 @@ local function handle_measure_number(state)
 	for _, entry in ipairs(glyph_entries) do
 		local chunk = render_utils.glyph_group(state.ctx, entry.glyph, cursor, baseline_y, "left", "center", "#444")
 		if (not chunk) and entry.fallback and entry.fallback ~= entry.glyph then
-			chunk = render_utils.glyph_group(
-				state.ctx,
-				entry.fallback,
-				cursor,
-				baseline_y,
-				"left",
-				"center",
-				"#444"
-			)
+			chunk = render_utils.glyph_group(state.ctx, entry.fallback, cursor, baseline_y, "left", "center", "#444")
 			if chunk and (not entry.width or entry.width == fallback_width) then
 				local fallback_px = render_utils.glyph_width_px(state.ctx, entry.fallback)
 				if fallback_px then
@@ -444,6 +447,7 @@ local function finalize_svg_groups(state)
 		state.chords_rest_positions
 end
 
+-- ─────────────────────────────────────
 local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 	utils.log("draw_sequence", 2)
 	local state = create_initial_state(ctx, chords, spacing_sequence, measure_meta)
