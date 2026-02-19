@@ -126,6 +126,19 @@ M.TIME_SIGNATURE_DIGITS = {
 	["9"] = "timeSig9",
 }
 
+M.DYNAMIC_GLYPHS = {
+	["p"] = "dynamicPiano",
+	["pp"] = "dynamicPP",
+	["ppp"] = "dynamicPPP",
+	["pppp"] = "dynamicPPPP",
+	["mp"] = "dynamicMP",
+	["mf"] = "dynamicMF",
+	["f"] = "dynamicForte",
+	["ff"] = "dynamicFF",
+	["fff"] = "dynamicFFF",
+	["ffff"] = "dynamicFFFF",
+}
+
 M.METRONOME_NOTE_GLYPHS = {
 	[1] = "metNoteWhole",
 	[2] = "metNoteHalfUp",

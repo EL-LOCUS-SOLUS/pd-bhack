@@ -8,6 +8,178 @@ local stems = require("score.rendering.stems")
 local ties = require("score.rendering.ties")
 local tuplets = require("score.rendering.tuplets")
 
+local function resolve_chord_dynamic_glyph(chord)
+	if not chord then
+		return nil
+	end
+	if chord.dynamic_glyph and type(chord.dynamic_glyph) == "string" and chord.dynamic_glyph ~= "" then
+		return chord.dynamic_glyph
+	end
+	local raw = chord.dynamic
+	if raw == nil then
+		return nil
+	end
+	if type(raw) == "table" then
+		raw = raw[1]
+	end
+	if raw == nil then
+		return nil
+	end
+	if type(raw) ~= "string" then
+		raw = tostring(raw)
+	end
+	local trimmed = raw:match("^%s*(.-)%s*$")
+	if not trimmed or trimmed == "" then
+		return nil
+	end
+	if trimmed:match("^dynamic") then
+		chord.dynamic = trimmed
+		chord.dynamic_glyph = trimmed
+		return trimmed
+	end
+
+	local token = trimmed:lower()
+	if constants.DYNAMIC_GLYPHS[token] then
+		chord.dynamic = token
+		chord.dynamic_glyph = constants.DYNAMIC_GLYPHS[token]
+		return chord.dynamic_glyph
+	end
+	return nil
+end
+
+local function update_bounds_with_glyph(state, anchor_x, glyph_metrics)
+	if not glyph_metrics then
+		return state
+	end
+	local left_edge = anchor_x + (glyph_metrics.min_x or 0)
+	local right_edge = anchor_x + (glyph_metrics.max_x or 0)
+	local min_y = glyph_metrics.absolute_min_y
+	local max_y = glyph_metrics.absolute_max_y
+
+	if (not state.chord_leftmost) or (left_edge < state.chord_leftmost) then
+		state.chord_leftmost = left_edge
+	end
+	if (not state.chord_rightmost) or (right_edge > state.chord_rightmost) then
+		state.chord_rightmost = right_edge
+	end
+	if min_y and ((not state.chord_min_y) or (min_y < state.chord_min_y)) then
+		state.chord_min_y = min_y
+	end
+	if max_y and ((not state.chord_max_y) or (max_y > state.chord_max_y)) then
+		state.chord_max_y = max_y
+	end
+
+	return state
+end
+
+local function compute_chord_notehead_center_x(state)
+	local chord = state.current_chord
+	if not chord or not chord.notes then
+		return state.current_chord_x or state.current_x or 0
+	end
+
+	local left_edge, right_edge
+	local fallback_sum = 0
+	local fallback_count = 0
+	for _, note in ipairs(chord.notes) do
+		if note.render_x then
+			fallback_sum = fallback_sum + note.render_x
+			fallback_count = fallback_count + 1
+			local m = state.note_head_metrics and state.note_head_metrics[note]
+			if m then
+				local left = note.render_x + (m.min_x or 0)
+				local right = note.render_x + (m.max_x or 0)
+				if (not left_edge) or (left < left_edge) then
+					left_edge = left
+				end
+				if (not right_edge) or (right > right_edge) then
+					right_edge = right
+				end
+			end
+		end
+	end
+
+	if left_edge and right_edge and right_edge > left_edge then
+		return (left_edge + right_edge) * 0.5
+	end
+	if fallback_count > 0 then
+		return fallback_sum / fallback_count
+	end
+	return state.current_chord_x or state.current_x or 0
+end
+
+local function render_chord_dynamic(state)
+	utils.log("render_chord_dynamic", 2)
+	local chord = state.current_chord
+	if not chord or chord.is_rest then
+		return state
+	end
+
+	local glyph_name = resolve_chord_dynamic_glyph(chord)
+	if not glyph_name then
+		state.previous_chord_dynamic_glyph = nil
+		return state
+	end
+	if state.previous_chord_dynamic_glyph and state.previous_chord_dynamic_glyph == glyph_name then
+		return state
+	end
+
+	local chord_x = compute_chord_notehead_center_x(state)
+	local clef_key = (state.ctx.clef and state.ctx.clef.config and state.ctx.clef.config.key) or "g"
+	local direction = rhythm.ensure_chord_stem_direction(clef_key, chord)
+	local staff = state.ctx.staff or {}
+	local spacing = state.staff_spacing or staff.spacing or constants.DEFAULT_SPACING
+
+	local chord_min_y = state.chord_min_y or staff.center or 0
+	local chord_max_y = state.chord_max_y or staff.center or 0
+	local top_target = math.min((staff.top or chord_min_y) - (spacing * 1.5), chord_min_y - (spacing * 1.1))
+	local bottom_target = math.max((staff.bottom or chord_max_y) + (spacing * 1.8), chord_max_y + (spacing * 1.3))
+
+	local candidates
+	if direction == "down" then
+		candidates = {
+			{ y = top_target, preference = 0 },
+			{ y = bottom_target, preference = 1 },
+		}
+	else
+		candidates = {
+			{ y = bottom_target, preference = 0 },
+			{ y = top_target, preference = 1 },
+		}
+	end
+
+	local best_chunk, best_metrics, best_score
+	for _, candidate in ipairs(candidates) do
+		local chunk, metrics =
+			render_utils.glyph_group(state.ctx, glyph_name, chord_x, candidate.y, "center", "center", "#000000")
+		if chunk and metrics then
+			local gm_min_y = metrics.absolute_min_y or (candidate.y + (metrics.min_y or 0))
+			local gm_max_y = metrics.absolute_max_y or (candidate.y + (metrics.max_y or 0))
+			local overlap = math.max(0, math.min(gm_max_y, chord_max_y) - math.max(gm_min_y, chord_min_y))
+			local distance = 0
+			if gm_max_y < chord_min_y then
+				distance = chord_min_y - gm_max_y
+			elseif gm_min_y > chord_max_y then
+				distance = gm_min_y - chord_max_y
+			end
+			local score = (overlap * 1000) + candidate.preference - (distance * 0.05)
+			if (not best_score) or score < best_score then
+				best_score = score
+				best_chunk = chunk
+				best_metrics = metrics
+			end
+		end
+	end
+
+	if best_chunk then
+		table.insert(state.notes_svg, table.concat({ '  <g class="dynamics">', "    " .. best_chunk, "  </g>" }, "\n"))
+		state = update_bounds_with_glyph(state, chord_x, best_metrics)
+		state.previous_chord_dynamic_glyph = glyph_name
+	end
+
+	return state
+end
+
 local function assign_cluster_offsets(notes, threshold_steps, offset_px)
 	utils.log("assign_cluster_offsets", 2)
 	if not notes or offset_px <= 0 then
@@ -820,6 +992,7 @@ local function render_notes_and_chords(state)
 	end
 
 	state = render_stems_and_flags(state)
+	state = render_chord_dynamic(state)
 
 	if state.chord_rightmost then
 		state.layout_right = math.max(state.layout_right, state.chord_rightmost)

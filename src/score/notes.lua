@@ -1,6 +1,7 @@
 local utils = require("score/utils")
 local internal_utils = require("score/utils/init")
 local rhythm = require("score.rhythm")
+local constants = require("score.constants")
 
 local Note = {}
 Note.__index = Note
@@ -68,6 +69,54 @@ local function resolve_notehead_glyph(name_or_glyph, figure_suffix)
 end
 
 -- ─────────────────────────────────────
+local function normalize_dynamic_token(raw)
+	if raw == nil then
+		return ""
+	end
+	if type(raw) == "table" then
+		raw = raw[1]
+	end
+	if raw == nil then
+		return ""
+	end
+	if type(raw) ~= "string" then
+		raw = tostring(raw)
+	end
+	local token = trim_string(raw)
+	if not token or token == "" then
+		return ""
+	end
+	return token:lower()
+end
+
+-- ─────────────────────────────────────
+local function resolve_dynamic_glyph(raw)
+	local original = raw
+	if type(original) == "table" then
+		original = original[1]
+	end
+	if original == nil then
+		return "", nil
+	end
+	if type(original) ~= "string" then
+		original = tostring(original)
+	end
+	local trimmed = trim_string(original)
+	if not trimmed or trimmed == "" then
+		return "", nil
+	end
+	if trimmed:match("^dynamic") then
+		return trimmed, trimmed
+	end
+
+	local token = normalize_dynamic_token(trimmed)
+	if constants.DYNAMIC_GLYPHS[token] then
+		return token, constants.DYNAMIC_GLYPHS[token]
+	end
+	return "", nil
+end
+
+-- ─────────────────────────────────────
 local function build_chord_notes(chord, notes)
 	utils.log("build_chord_notes", 2)
 	chord.notes = {}
@@ -116,6 +165,8 @@ function Chord:new(name, notes, entry_info)
 	local obj = setmetatable({}, self)
 	obj.name = name or ""
 	obj.notes = {}
+	obj.dynamic = ""
+	obj.dynamic_glyph = nil
 	obj.stem = "stem"
 	obj.notehead = "noteheadBlack"
 
@@ -152,6 +203,10 @@ function Chord:populate_notes(notes_or_spec)
 	if type(notes_or_spec) == "table" and type(notes_or_spec.notes) == "table" then
 		notes = notes_or_spec.notes
 		noteheads = notes_or_spec.noteheads
+		self.dynamic, self.dynamic_glyph = resolve_dynamic_glyph(notes_or_spec.dynamic or notes_or_spec.dynamics)
+	end
+	if not self.dynamic then
+		self.dynamic = ""
 	end
 
 	if type(notes) ~= "table" then
@@ -178,6 +233,7 @@ function Chord:populate_notes(notes_or_spec)
 			min_figure = self.min_figure,
 			is_tied = self.is_tied or false,
 			stem = self.stem,
+			dynamic = self.dynamic,
 			notehead = resolved,
 			has_explicit_notehead = (name_or_glyph ~= nil),
 			chord = self,
@@ -217,4 +273,6 @@ return {
 	Note = Note,
 	Rest = Rest,
 	Chord = Chord,
+	normalize_dynamic_token = normalize_dynamic_token,
+	resolve_dynamic_glyph = resolve_dynamic_glyph,
 }

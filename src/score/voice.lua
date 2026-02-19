@@ -6,6 +6,7 @@ local rhythm = require("score.rhythm")
 local Voice = {}
 Voice.__index = Voice
 
+-- ─────────────────────────────────────
 local function extract_notehead_name_from_glyph(glyph)
 	if type(glyph) ~= "string" then
 		return nil
@@ -18,12 +19,14 @@ local function extract_notehead_name_from_glyph(glyph)
 	return nil
 end
 
+-- ─────────────────────────────────────
 local function chord_to_blueprint(chord)
 	utils.log("chord_to_blueprint", 2)
 	if not chord then
 		return nil
 	end
 	local blueprint = { name = chord.name, notes = {} }
+	blueprint.dynamic = chord.dynamic
 	for _, note in ipairs(chord.notes or {}) do
 		local notehead_name = nil
 		if note.has_explicit_notehead then
@@ -57,10 +60,17 @@ local function instantiate_chord_blueprint(blueprint, entry_info, target)
 
 	if target then
 		target.name = blueprint.name or target.name or ""
+		target.dynamic = notes.normalize_dynamic_token(blueprint.dynamic)
+		local _, dynamic_glyph = notes.resolve_dynamic_glyph(blueprint.dynamic)
+		target.dynamic_glyph = dynamic_glyph
 		target:populate_notes(note_specs)
 		return target
 	end
-	return notes.Chord:new(blueprint.name, note_specs, entry_info)
+	local chord = notes.Chord:new(blueprint.name, note_specs, entry_info)
+	chord.dynamic = notes.normalize_dynamic_token(blueprint.dynamic)
+	local _, dynamic_glyph = notes.resolve_dynamic_glyph(blueprint.dynamic)
+	chord.dynamic_glyph = dynamic_glyph
+	return chord
 end
 
 -- ─────────────────────────────────────
