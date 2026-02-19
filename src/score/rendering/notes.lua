@@ -134,7 +134,8 @@ local function render_rest_dots(state, rest, rest_metrics)
 	local max_x = rest_right
 	for dot_index = 1, dot_level do
 		local dot_x = base_x + (dot_index - 1) * dot_step
-		local dot_chunk = render_utils.glyph_group(state.ctx, "textAugmentationDot", dot_x, dot_y, "center", "center", "#000000")
+		local dot_chunk =
+			render_utils.glyph_group(state.ctx, "textAugmentationDot", dot_x, dot_y, "center", "center", "#000000")
 		if dot_chunk then
 			table.insert(state.notes_svg, "  " .. dot_chunk)
 		end
@@ -263,7 +264,8 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 			local note_y = geometry.staff_y_for_steps(ctx, note.steps)
 			local y_offset = glyph_vertical_offset(glyph_name, accidental_key)
 			local glyph_options = (y_offset ~= 0) and { y_offset_spaces = y_offset } or nil
-			local _, metrics = render_utils.glyph_group(ctx, glyph_name, 0, 0, "right", "center", "#000000", glyph_options)
+			local _, metrics =
+				render_utils.glyph_group(ctx, glyph_name, 0, 0, "right", "center", "#000000", glyph_options)
 			if metrics then
 				chord_accidentals[#chord_accidentals + 1] = {
 					name = glyph_name,
@@ -575,7 +577,9 @@ end
 
 local function update_chord_vertical_bounds(state)
 	local min_y, max_y = state.chord_min_y, state.chord_max_y
-	local staff_spacing = state.staff_spacing or (state.ctx and state.ctx.staff and state.ctx.staff.spacing) or constants.DEFAULT_SPACING
+	local staff_spacing = state.staff_spacing
+		or (state.ctx and state.ctx.staff and state.ctx.staff.spacing)
+		or constants.DEFAULT_SPACING
 	local fallback_half = staff_spacing * 0.5
 	for _, note in ipairs(state.current_chord.notes or {}) do
 		if note.render_y then
@@ -691,8 +695,10 @@ local function render_stems_and_flags(state)
 			start_y = stem_metrics.bottom_y or minnote.render_y or 0
 			end_y = maxnote.render_y or 0
 		end
-		state.chord_min_y = state.chord_min_y and math.min(state.chord_min_y, start_y, end_y) or math.min(start_y, end_y)
-		state.chord_max_y = state.chord_max_y and math.max(state.chord_max_y, start_y, end_y) or math.max(start_y, end_y)
+		state.chord_min_y = state.chord_min_y and math.min(state.chord_min_y, start_y, end_y)
+			or math.min(start_y, end_y)
+		state.chord_max_y = state.chord_max_y and math.max(state.chord_max_y, start_y, end_y)
+			or math.max(start_y, end_y)
 
 		local line = string.format(
 			'  <line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#000000" stroke-width="%.3f"/>',
@@ -717,7 +723,8 @@ local function render_stems_and_flags(state)
 	if tuplet_id then
 		tuplets.record_tuplet_beam_note(state, chord, flag_note, anchor_stem_metrics, direction)
 	else
-		local flag_chunk, rendered_flag_metrics = stems.render_flag(state.ctx, flag_note, anchor_stem_metrics, direction)
+		local flag_chunk, rendered_flag_metrics =
+			stems.render_flag(state.ctx, flag_note, anchor_stem_metrics, direction)
 		if flag_chunk then
 			table.insert(state.notes_svg, "  " .. flag_chunk)
 			if rendered_flag_metrics and rendered_flag_metrics.absolute_max_x then
@@ -795,10 +802,18 @@ local function render_notes_and_chords(state)
 
 	for _, note in ipairs(chord.notes) do
 		if note.steps then
-			if not state.min_steps_note or not state.min_steps_note.steps or (note.steps < state.min_steps_note.steps) then
+			if
+				not state.min_steps_note
+				or not state.min_steps_note.steps
+				or (note.steps < state.min_steps_note.steps)
+			then
 				state.min_steps_note = note
 			end
-			if not state.max_steps_note or not state.max_steps_note.steps or (note.steps > state.max_steps_note.steps) then
+			if
+				not state.max_steps_note
+				or not state.max_steps_note.steps
+				or (note.steps > state.max_steps_note.steps)
+			then
 				state.max_steps_note = note
 			end
 		end

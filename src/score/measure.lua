@@ -34,7 +34,6 @@ local function instantiate_inline_chord(spec, entry_info)
 	return notes.Chord:new(spec.name or "", notes_list, entry_info)
 end
 
--- ─────────────────────────────────────
 function Measure:new(time_sig, tree, number)
 	local measure_sum = 0
 	for i = 1, #tree do
@@ -137,6 +136,7 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 	if total == 0 then
 		error("This shouldn't happen")
 	end
+	-- pd.post("measure_min_figure -> " .. measure_min_figure)
 
 	assert(measure_min_figure, "measure_min_figure is nil")
 	for _, entry in ipairs(rhythms) do
@@ -147,6 +147,7 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 			local tuplet_sum = rhythm.rhythm_sum(child_rhythms)
 			local total_figure_tuplet = parent_min_figure / up_value
 			local tuplet_min_figure = (total_figure_tuplet * utils.floor_pow2(tuplet_sum))
+			-- pd.post(tuplet_min_figure)
 
 			local tuple_obj = rhythm.Tuplet:new(up_value, child_rhythms, {
 				parent = parent_tuplet,

@@ -92,8 +92,10 @@ function b_voice:midiout()
 			end
 		end
 	else
-		local ddddnew = bhack.dddd:new_fromtable(self, self.entry.chord)
-		ddddnew:output(1)
+		if self.entry then
+			local ddddnew = bhack.dddd:new_fromtable(self, self.entry.chord)
+			ddddnew:output(1)
+		end
 	end
 end
 

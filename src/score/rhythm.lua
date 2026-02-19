@@ -90,6 +90,7 @@ local function compute_chord_stem_direction(clef_key, chord)
 	return (average >= threshold_value) and "down" or "up"
 end
 
+-- ─────────────────────────────────────
 local function ensure_chord_stem_direction(clef_key, chord)
 	utils.log("ensure_chord_stem_direction", 2)
 	if not chord then
@@ -120,6 +121,7 @@ local function ensure_chord_stem_direction(clef_key, chord)
 	return direction
 end
 
+-- ─────────────────────────────────────
 local function beam_count_for_figure(value, min_figure)
 	local figure = min_figure / value
 	value = math.tointeger(utils.ceil_pow2(figure))
@@ -135,13 +137,28 @@ local function beam_count_for_figure(value, min_figure)
 	return count
 end
 
+-- ─────────────────────────────────────
 local function beam_count_for_chord(chord)
 	if not chord then
 		return 0
 	end
+	local figure = tonumber(chord.figure)
+	if figure and figure > 0 then
+		if figure < 8 then
+			return 0
+		end
+		local count = 0
+		local step = 8
+		while figure >= step do
+			count = count + 1
+			step = step * 2
+		end
+		return count
+	end
 	return beam_count_for_figure(chord.value, chord.min_figure)
 end
 
+-- ─────────────────────────────────────
 local function chord_tuplet_id(entry)
 	if not entry then
 		return nil
@@ -157,6 +174,7 @@ local function chord_tuplet_id(entry)
 	return nil
 end
 
+-- ─────────────────────────────────────
 local function tuplet_chain(entry)
 	local chain = {}
 	local current = entry and entry.parent_tuplet
@@ -167,6 +185,7 @@ local function tuplet_chain(entry)
 	return chain
 end
 
+-- ─────────────────────────────────────
 local function tuplet_root(tuplet)
 	local current = tuplet
 	while current and current.parent do
@@ -175,6 +194,7 @@ local function tuplet_root(tuplet)
 	return current or tuplet
 end
 
+-- ─────────────────────────────────────
 local function is_pitch_atom(atom)
 	utils.log("is_pitch_atom", 2)
 	local atom_type = type(atom)
@@ -191,6 +211,7 @@ local function is_pitch_atom(atom)
 	return false
 end
 
+-- ─────────────────────────────────────
 local function is_pitchlist(entry)
 	utils.log("is_pitchlist", 2)
 	if type(entry) ~= "table" or #entry == 0 then
@@ -204,27 +225,35 @@ local function is_pitchlist(entry)
 	return true
 end
 
+-- ─────────────────────────────────────
 local function is_tuplet_entry(entry)
 	utils.log("is_tuplet_entry", 2)
 	if type(entry) ~= "table" or #entry ~= 2 then
 		return false
 	end
+
 	if type(entry[1]) ~= "number" or type(entry[2]) ~= "table" then
 		return false
 	end
+
 	if is_pitchlist(entry[2]) then
 		return false
 	end
+
 	return true
 end
 
+-- ─────────────────────────────────────
+-- This returns the value of the rhythm_value
 local function rhythm_value(entry)
 	utils.log("rhythm_value", 2)
+
 	if is_tuplet_entry(entry) then
 		return entry[1]
 	elseif type(entry) == "number" then
 		return entry
 	elseif type(entry) == "string" then
+		-- this for tied values
 		local last = entry:sub(-1)
 		if last ~= "_" then
 			error("Invalid tree syntax '" .. entry .. "'")
@@ -296,10 +325,9 @@ end
 local function figure_to_notehead(value, min_measure_figure)
 	utils.log("figure_to_notehead", 2)
 	local dot_level, final_figure = compute_figure(value, min_measure_figure)
-
-	if final_figure >= 4 then
+	if final_figure > 2 then
 		return "noteheadBlack", dot_level
-	elseif final_figure >= 2 then
+	elseif final_figure > 1 then
 		return "noteheadHalf", dot_level
 	else
 		return "noteheadWhole", dot_level
@@ -363,14 +391,32 @@ function Tuplet:new(up_value, rhythms, parent_context)
 	obj.duration = container_duration * (obj.up_value / parent_sum)
 	obj.tuplet_sum = rhythm_sum(obj.rhythms)
 
+	-- pd.post(parent_context.meter_type)
+	-- pd.post(up_value)
 	if parent_context.meter_type == "binary" then
+		if utils.is_power_of_two(up_value) then
+			if utils.is_power_of_two(obj.tuplet_sum) then
+				obj.require_draw = false
+			end
+		elseif utils.is_power_of_three(up_value) then
+			if utils.is_power_of_three(obj.tuplet_sum) then
+				obj.require_draw = false
+			end
+		end
+	elseif parent_context.meter_type == "ternary" then
+		if utils.is_power_of_two(up_value) then
+			if utils.is_power_of_two(obj.tuplet_sum) then
+				obj.require_draw = false
+			end
+		elseif utils.is_power_of_three(up_value) then
+			if utils.is_power_of_three(obj.tuplet_sum) then
+				obj.require_draw = false
+			end
+		end
+	else
 		if utils.is_power_of_two(obj.tuplet_sum) then
 			obj.require_draw = false
 		end
-	elseif parent_context.meter_type == "ternary" then
-		-- pd.post("ternary measure")
-	else
-		pd.post("Complex and irregular time signatures are not very well supported yet")
 	end
 
 	if obj.tuplet_sum <= 0 then

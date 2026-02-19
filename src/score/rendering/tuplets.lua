@@ -2,6 +2,7 @@ local constants = require("score.constants")
 local utils = require("score/utils")
 local rhythm = require("score.rhythm")
 local render_utils = require("score.rendering.utils")
+local stems = require("score.rendering.stems")
 
 local render_tuplet_draw_request
 local flush_pending_tuplet_draws
@@ -87,6 +88,7 @@ local function record_tuplet_beam_note(state, chord, note, stem_metrics, directi
 	if not chord or not note or not stem_metrics then
 		return
 	end
+
 	local chain = rhythm.tuplet_chain(chord)
 	local root = chain[#chain]
 	local root_id = root and root.id
@@ -343,7 +345,8 @@ local function emit_beam_strip(state, start_x, end_x, anchor_y, align_y)
 	for i = 0, segments - 1 do
 		local ratio = (segments == 1) and 0 or (i / (segments - 1))
 		local anchor_x = start_x + (effective * ratio)
-		local chunk = render_utils.glyph_group(ctx, constants.TUPLET_BEAM_GLYPH, anchor_x, anchor_y, "left", align_y, "#000000")
+		local chunk =
+			render_utils.glyph_group(ctx, constants.TUPLET_BEAM_GLYPH, anchor_x, anchor_y, "left", align_y, "#000000")
 		if chunk then
 			table.insert(state.notes_svg, "  " .. chunk)
 		end
@@ -352,32 +355,34 @@ local function emit_beam_strip(state, start_x, end_x, anchor_y, align_y)
 	return state
 end
 
-local function emit_beam_stub(state, anchor_x, anchor_y, align_y, direction)
-	if not anchor_x then
-		return state
-	end
-	local ctx = state.ctx
-	local align_x = (direction == "left") and "right" or "left"
-	local chunk = render_utils.glyph_group(ctx, constants.TUPLET_BEAM_GLYPH, anchor_x, anchor_y, align_x, align_y, "#000000")
-	if chunk then
-		table.insert(state.notes_svg, "  " .. chunk)
-	end
-	state.layout_right = math.max(state.layout_right or 0, anchor_x)
-	return state
-end
+-- local function emit_beam_stub(state, anchor_x, anchor_y, align_y, direction)
+-- 	if not anchor_x then
+-- 		return state
+-- 	end
+-- 	local ctx = state.ctx
+-- 	local align_x = (direction == "left") and "right" or "left"
+-- 	local chunk =
+-- 		render_utils.glyph_group(ctx, constants.TUPLET_BEAM_GLYPH, anchor_x, anchor_y, align_x, align_y, "#000000")
+-- 	if chunk then
+-- 		table.insert(state.notes_svg, "  " .. chunk)
+-- 	end
+-- 	state.layout_right = math.max(state.layout_right or 0, anchor_x)
+-- 	return state
+-- end
+--
+-- local function closest_neighbor(notes, index, step)
+-- 	local cursor = index + step
+-- 	while cursor >= 1 and cursor <= #notes do
+-- 		local entry = notes[cursor]
+-- 		if entry and not entry.is_break then
+-- 			return entry
+-- 		end
+-- 		cursor = cursor + step
+-- 	end
+-- 	return nil
+-- end
 
-local function closest_neighbor(notes, index, step)
-	local cursor = index + step
-	while cursor >= 1 and cursor <= #notes do
-		local entry = notes[cursor]
-		if entry and not entry.is_break then
-			return entry
-		end
-		cursor = cursor + step
-	end
-	return nil
-end
-
+-- ─────────────────────────────────────
 local function render_tuplet_beams(state, tuplet)
 	if not tuplet or not tuplet.id or not state.tuplet_beam_data then
 		return state
@@ -386,6 +391,27 @@ local function render_tuplet_beams(state, tuplet)
 	local lookup = state.tuplet_bucket_lookup or {}
 	local bucket_id = lookup[tuplet.id] or tuplet.id
 	local bucket = state.tuplet_beam_data[bucket_id]
+
+	if bucket and bucket.notes and #bucket.notes == 1 then
+		local single = bucket.notes[1]
+		if single and not single.is_break and single.note and single.stem_metrics then
+			local dir = single.direction or bucket.direction or "up"
+			local chunk, rendered_flag_metrics = stems.render_flag(state.ctx, single.note, single.stem_metrics, dir)
+			if chunk then
+				table.insert(state.notes_svg, "  " .. chunk)
+				if rendered_flag_metrics and rendered_flag_metrics.absolute_max_x then
+					local flag_right = rendered_flag_metrics.absolute_max_x
+					if flag_right then
+						local flag_padding = (state.staff_spacing or 0) * 0.3
+						local padded_right = flag_right + flag_padding
+						if (not state.chord_rightmost) or (padded_right > state.chord_rightmost) then
+							state.chord_rightmost = padded_right
+						end
+					end
+				end
+			end
+		end
+	end
 
 	if not bucket or not bucket.notes or #bucket.notes < 2 then
 		if bucket and tuplet.id == bucket.owner_id then
@@ -427,6 +453,7 @@ local function render_tuplet_beams(state, tuplet)
 		tuplet.beam_highest_pos = base_line_y - ((levels - 1) * (beam_height + beam_gap))
 	end
 	local notes = bucket.notes
+	local flagged_singletons = setmetatable({}, { __mode = "k" })
 
 	for level = 1, max_level do
 		local run_start, run_end = nil, nil
@@ -461,18 +488,24 @@ local function render_tuplet_beams(state, tuplet)
 				state = emit_beam_strip(state, start_x, end_x, beam_anchor_y, align_y)
 			else
 				local stub_entry = first_entry
-				local neighbor_left = closest_neighbor(notes, run_start, -1)
-				local neighbor_right = closest_neighbor(notes, run_end, 1)
-				local direction_hint = "right"
-				local lx = (neighbor_left and neighbor_left.x) or nil
-				local rx = (neighbor_right and neighbor_right.x) or nil
-				local anchor_x = stub_entry and stub_entry.x or 0
-				local left_distance = (lx and anchor_x) and math.abs(anchor_x - lx) or math.huge
-				local right_distance = (rx and anchor_x) and math.abs(rx - anchor_x) or math.huge
-				if left_distance < right_distance then
-					direction_hint = "left"
+				if stub_entry and not flagged_singletons[stub_entry] then
+					local chunk, rendered_flag_metrics =
+						stems.render_flag(state.ctx, stub_entry.note, stub_entry.stem_metrics, direction)
+					if chunk then
+						table.insert(state.notes_svg, "  " .. chunk)
+						if rendered_flag_metrics and rendered_flag_metrics.absolute_max_x then
+							local flag_right = rendered_flag_metrics.absolute_max_x
+							if flag_right then
+								local flag_padding = (state.staff_spacing or 0) * 0.3
+								local padded_right = flag_right + flag_padding
+								if (not state.chord_rightmost) or (padded_right > state.chord_rightmost) then
+									state.chord_rightmost = padded_right
+								end
+							end
+						end
+					end
+					flagged_singletons[stub_entry] = true
 				end
-				state = emit_beam_stub(state, anchor_x, beam_anchor_y, align_y, direction_hint)
 			end
 			run_start, run_end = nil, nil
 		end
@@ -545,6 +578,7 @@ local function tuplet_label_sequence_from_string(label)
 	if type(label) ~= "string" then
 		return seq
 	end
+
 	for ch in label:gmatch(".") do
 		if ch:match("%d") then
 			seq[#seq + 1] = "tuplet" .. ch

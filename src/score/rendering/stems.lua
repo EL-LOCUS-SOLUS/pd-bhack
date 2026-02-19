@@ -2,6 +2,7 @@ local utils = require("score/utils")
 local rhythm = require("score.rhythm")
 local render_utils = require("score.rendering.utils")
 
+-- ─────────────────────────────────────
 local function should_render_stem(note)
 	utils.log("should_render_stem", 2)
 	if not note then
@@ -14,6 +15,7 @@ local function should_render_stem(note)
 	return true
 end
 
+-- ─────────────────────────────────────
 local function resolve_flag_glyph(note, direction)
 	utils.log("resolve_flag_glyph", 2)
 
@@ -36,6 +38,7 @@ local function resolve_flag_glyph(note, direction)
 	return glyph
 end
 
+-- ─────────────────────────────────────
 local function render_flag(ctx, note, stem_metrics, direction)
 	utils.log("render_flag", 2)
 	if not note or not stem_metrics or not ctx.render_tree then
@@ -43,6 +46,7 @@ local function render_flag(ctx, note, stem_metrics, direction)
 	end
 
 	local glyph_name = resolve_flag_glyph(note, direction)
+	-- pd.post(ghyph_name)
 	if not glyph_name then
 		return nil
 	end
@@ -80,6 +84,7 @@ local function render_flag(ctx, note, stem_metrics, direction)
 	return flag_chunk, flag_metrics
 end
 
+-- ─────────────────────────────────────
 local function render_stem(ctx, note, head_metrics, direction_override)
 	utils.log("render_stem", 2)
 	if not should_render_stem(note) or not ctx.render_tree then
@@ -123,7 +128,8 @@ local function render_stem(ctx, note, head_metrics, direction_override)
 		anchor_x = right_edge
 	end
 
-	local stem_group, stem_metrics = render_utils.glyph_group(ctx, note.stem, anchor_x, anchor_y, align_x, align_y, "#000000")
+	local stem_group, stem_metrics =
+		render_utils.glyph_group(ctx, note.stem, anchor_x, anchor_y, align_x, align_y, "#000000")
 
 	if stem_metrics then
 		local scale = ctx.glyph.scale or 1
@@ -161,6 +167,7 @@ local function render_stem(ctx, note, head_metrics, direction_override)
 	return stem_group, stem_metrics
 end
 
+-- ─────────────────────────────────────
 return {
 	should_render_stem = should_render_stem,
 	resolve_flag_glyph = resolve_flag_glyph,

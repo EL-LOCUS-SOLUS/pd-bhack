@@ -16,8 +16,11 @@ function b_list:initialize(_, args)
 		local inlet_index = i
 		self["in_" .. i .. "_dddd"] = function(self, atoms)
 			local id = atoms[1]
-			local dddd = bhack.get_dddd_fromid(self, id)
+			local dddd = bhack.dddd:new_fromid(self, id)
 			self.inlet_data[inlet_index] = dddd:get_table()
+		end
+		self["in_" .. i .. "_float"] = function(self, f)
+			self.inlet_data[inlet_index] = f
 		end
 	end
 
@@ -32,6 +35,13 @@ function b_list:in_1_dddd(atoms)
 	local dddd = bhack.dddd:new_fromid(self, id)
 	self.inlet_data[1] = dddd:get_table()
 
+	local dddd_new = bhack.dddd:new_fromtable(self, self.inlet_data)
+	dddd_new:output(1)
+end
+
+-- ─────────────────────────────────────
+function b_list:in_1_float(f)
+	self.inlet_data[1] = f
 	local dddd_new = bhack.dddd:new_fromtable(self, self.inlet_data)
 	dddd_new:output(1)
 end
