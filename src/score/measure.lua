@@ -90,7 +90,7 @@ function Measure:append_value_entry(
 	local raw_figure = (duration_whole ~= 0) and (1 / duration_whole) or 0
 	local figure = raw_figure
 	if figure > 0 then
-		figure = utils.ceil_pow2(figure)
+		figure = utils.floor_pow2(figure)
 	end
 
 	local notehead, dot_level = rhythm.figure_to_notehead(value, min_figure)
