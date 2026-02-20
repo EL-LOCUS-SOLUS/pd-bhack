@@ -12,6 +12,9 @@ Rest.__index = Rest
 local Chord = {}
 Chord.__index = Chord
 
+local carried_dynamic_token = ""
+local carried_dynamic_glyph = nil
+
 -- ─────────────────────────────────────
 local function trim_string(s)
 	if type(s) ~= "string" then
@@ -117,6 +120,12 @@ local function resolve_dynamic_glyph(raw)
 end
 
 -- ─────────────────────────────────────
+local function reset_dynamic_carry()
+	carried_dynamic_token = ""
+	carried_dynamic_glyph = nil
+end
+
+-- ─────────────────────────────────────
 local function build_chord_notes(chord, notes)
 	utils.log("build_chord_notes", 2)
 	chord.notes = {}
@@ -169,9 +178,12 @@ function Chord:new(name, notes, entry_info)
 	obj.dynamic_glyph = nil
 	obj.stem = "stem"
 	obj.notehead = "noteheadBlack"
+	obj.time_sig = entry_info.time_sig
+	obj.tree = entry_info.tree
 
 	if entry_info then
 		obj.figure = entry_info.figure
+		obj.raw_figure = entry_info.raw_figure
 		obj.duration = entry_info.duration
 		obj.index = entry_info.index
 		obj.measure_index = entry_info.measure_index
@@ -190,6 +202,7 @@ function Chord:new(name, notes, entry_info)
 	return obj
 end
 
+-- ─────────────────────────────────────
 function Chord:populate_notes(notes_or_spec)
 	utils.log("build_chord_notes", 2)
 	self.notes = {}
@@ -200,13 +213,33 @@ function Chord:populate_notes(notes_or_spec)
 	-- 2) spec: { notes = {...}, noteheads = {"X", "Plus", ...} }
 	local notes = notes_or_spec
 	local noteheads = nil
+	local incoming_dynamic = nil
 	if type(notes_or_spec) == "table" and type(notes_or_spec.notes) == "table" then
 		notes = notes_or_spec.notes
 		noteheads = notes_or_spec.noteheads
-		self.dynamic, self.dynamic_glyph = resolve_dynamic_glyph(notes_or_spec.dynamic or notes_or_spec.dynamics)
+		incoming_dynamic = notes_or_spec.dynamic or notes_or_spec.dynamics
 	end
-	if not self.dynamic then
+
+	local parsed_dynamic, parsed_glyph = resolve_dynamic_glyph(incoming_dynamic)
+	if parsed_dynamic ~= "" then
+		self.dynamic = parsed_dynamic
+		self.dynamic_glyph = parsed_glyph
+	elseif type(self.dynamic) == "string" and self.dynamic ~= "" then
+		if not self.dynamic_glyph then
+			local _, resolved_self_glyph = resolve_dynamic_glyph(self.dynamic)
+			self.dynamic_glyph = resolved_self_glyph
+		end
+	elseif carried_dynamic_token ~= "" then
+		self.dynamic = carried_dynamic_token
+		self.dynamic_glyph = carried_dynamic_glyph
+	else
 		self.dynamic = ""
+		self.dynamic_glyph = nil
+	end
+
+	if type(self.dynamic) == "string" and self.dynamic ~= "" and self.dynamic_glyph then
+		carried_dynamic_token = self.dynamic
+		carried_dynamic_glyph = self.dynamic_glyph
 	end
 
 	if type(notes) ~= "table" then
@@ -253,9 +286,11 @@ function Rest:new(entry_info)
 	obj.name = "rest"
 	obj.is_rest = true
 	obj.notes = nil
+	obj.time_sig = entry_info.time_sig
 
 	if entry_info then
 		obj.duration = entry_info.duration
+		obj.raw_figure = entry_info.raw_figure
 		obj.figure = entry_info.figure
 		obj.value = entry_info.value
 		obj.index = entry_info.index
@@ -275,4 +310,5 @@ return {
 	Chord = Chord,
 	normalize_dynamic_token = normalize_dynamic_token,
 	resolve_dynamic_glyph = resolve_dynamic_glyph,
+	reset_dynamic_carry = reset_dynamic_carry,
 }

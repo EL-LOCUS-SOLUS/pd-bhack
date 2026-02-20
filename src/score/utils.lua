@@ -1,5 +1,5 @@
 local M = {}
-local LOGLEVEL = 1 -- 0=none, 1=normal, 2=debug
+local LOGLEVEL = 0 -- 0=none, 1=normal, 2=debug
 
 --╭─────────────────────────────────────╮
 --│                Music                │

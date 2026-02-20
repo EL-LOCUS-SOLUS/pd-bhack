@@ -34,6 +34,7 @@ local function instantiate_inline_chord(spec, entry_info)
 	return notes.Chord:new(spec.name or "", notes_list, entry_info)
 end
 
+-- ─────────────────────────────────────
 function Measure:new(time_sig, tree, number)
 	local measure_sum = 0
 	for i = 1, #tree do
@@ -81,6 +82,7 @@ function Measure:append_value_entry(
 	if total == 0 then
 		total = 1
 	end
+
 	local ratio = value / total
 	local duration_whole = container_duration * ratio
 
@@ -93,6 +95,7 @@ function Measure:append_value_entry(
 
 	local notehead, dot_level = rhythm.figure_to_notehead(value, min_figure)
 	local entry_meta = {
+		time_sig = self.time_sig,
 		duration = duration_whole,
 		figure = figure,
 		raw_figure = raw_figure,
@@ -106,6 +109,7 @@ function Measure:append_value_entry(
 		dot_level = dot_level,
 		spacing_multiplier = rhythm.figure_spacing_multiplier(duration_whole),
 		is_tied = is_tied,
+		tree = self.tree,
 	}
 
 	local element
@@ -136,7 +140,6 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 	if total == 0 then
 		error("This shouldn't happen")
 	end
-	-- pd.post("measure_min_figure -> " .. measure_min_figure)
 
 	assert(measure_min_figure, "measure_min_figure is nil")
 	for _, entry in ipairs(rhythms) do
@@ -147,7 +150,6 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 			local tuplet_sum = rhythm.rhythm_sum(child_rhythms)
 			local total_figure_tuplet = parent_min_figure / up_value
 			local tuplet_min_figure = (total_figure_tuplet * utils.floor_pow2(tuplet_sum))
-			-- pd.post(tuplet_min_figure)
 
 			local tuple_obj = rhythm.Tuplet:new(up_value, child_rhythms, {
 				parent = parent_tuplet,
@@ -215,6 +217,7 @@ function Measure:build()
 	self.entries = {}
 	self.tuplets = {}
 	self.max_tuplet_depth = 0
+	-- Go recursive to get nested tuplets
 	self:expand_level(self.tree or {}, measure_whole, nil, self.min_figure, self.min_figure)
 end
 

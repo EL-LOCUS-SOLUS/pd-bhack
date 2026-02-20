@@ -198,6 +198,9 @@ function Score:set_current_measure_position(position)
 end
 
 -- ─────────────────────────────────────
+function Score:get_bpm()
+	return self.ctx.bpm
+end
 
 -- ─────────────────────────────────────
 function Score:set_bpm(bpm)
@@ -279,6 +282,36 @@ function Score:get_onsets(playbar_position)
 		end
 	end
 	return indexed, last_onset, current_measure, current_measure_offset_ms
+end
+
+-- ─────────────────────────────────────
+function Score:get_all_chords()
+	local bounds = self.ctx.chords_rest_positions
+	if not bounds or #bounds == 0 then
+		return {}
+	end
+
+	local measures = self.ctx.measures or {}
+	local bpm = self.ctx.bpm
+	local bpm_figure = 4
+	local ms_per_whole = (60000 / bpm) * bpm_figure
+
+	local chords = {}
+	local index = 1
+
+	for _, m in ipairs(measures) do
+		for _, entry in ipairs(m.entries or {}) do
+			local chord = bounds[index]
+			if chord then
+				local duration = entry and entry.duration or 0
+				chord.duration = duration * ms_per_whole
+				chords[#chords + 1] = chord
+			end
+			index = index + 1
+		end
+	end
+
+	return chords
 end
 
 -- ─────────────────────────────────────

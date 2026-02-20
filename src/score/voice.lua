@@ -156,6 +156,9 @@ end
 -- ─────────────────────────────────────
 function Voice:new(material)
 	local obj = setmetatable({}, self)
+	if notes.reset_dynamic_carry then
+		notes.reset_dynamic_carry()
+	end
 	obj.material = material or {}
 	obj.measures = {}
 	obj.chords = {}
