@@ -45,8 +45,8 @@ local function render_flag(ctx, note, stem_metrics, direction)
 		return nil
 	end
 
+	-- pd.post(note.figure)
 	local glyph_name = resolve_flag_glyph(note, direction)
-	-- pd.post(ghyph_name)
 	if not glyph_name then
 		return nil
 	end

@@ -8,10 +8,13 @@ local render_tuplet_draw_request
 local flush_pending_tuplet_draws
 local enqueue_tuplet_draw
 
+-- ─────────────────────────────────────
+-- This function does the extension of the stem is nevessary
 local function extend_stem_for_tuplet(state, note, stem_metrics, direction, old_anchor, new_anchor)
 	if not state or not stem_metrics or not note then
 		return
 	end
+
 	local old_y = old_anchor or stem_metrics.flag_anchor_y or stem_metrics.top_y or stem_metrics.bottom_y
 	local new_y = new_anchor or old_y
 	if not old_y or not new_y or math.abs(new_y - old_y) < 1e-3 then
@@ -29,6 +32,14 @@ local function extend_stem_for_tuplet(state, note, stem_metrics, direction, old_
 		state.ctx.staff.line_thickness * 0.5
 	)
 	state.notes_svg[#state.notes_svg + 1] = line
+
+	-- local radius = state.ctx.staff.line_thickness
+	--
+	-- local circle1 = string.format('  <circle cx="%.3f" cy="%.3f" r="%.3f" fill="#ff0000"/>', anchor_x, old_y, radius)
+	-- state.notes_svg[#state.notes_svg + 1] = circle1
+	--
+	-- local circle2 = string.format('  <circle cx="%.3f" cy="%.3f" r="%.3f" fill="#ff0000"/>', anchor_x, new_y, radius)
+	-- state.notes_svg[#state.notes_svg + 1] = circle2
 
 	local chord = note.chord
 	if chord and chord.parent_tuplet then
@@ -84,6 +95,7 @@ local function get_or_create_tuplet_beam_bucket(state, bucket_id, direction_hint
 	return bucket
 end
 
+-- ─────────────────────────────────────
 local function record_tuplet_beam_note(state, chord, note, stem_metrics, direction)
 	if not chord or not note or not stem_metrics then
 		return
@@ -143,6 +155,7 @@ local function record_tuplet_beam_note(state, chord, note, stem_metrics, directi
 	end
 end
 
+-- ─────────────────────────────────────
 local function record_tuplet_break(state, rest)
 	if not rest then
 		return
@@ -174,6 +187,7 @@ local function record_tuplet_break(state, rest)
 	}
 end
 
+-- ─────────────────────────────────────
 local function get_beam_glyph_metrics(ctx)
 	if ctx.cached_beam_metrics then
 		return ctx.cached_beam_metrics
@@ -189,6 +203,7 @@ local function get_beam_glyph_metrics(ctx)
 	return metrics
 end
 
+-- ─────────────────────────────────────
 local function finalize_tuplet_beam_geometry(state, bucket)
 	if not bucket or bucket.finalized then
 		return bucket
@@ -226,6 +241,7 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 		end
 		return extreme
 	end
+
 	local medium_steps = 4
 	local min_steps = bucket.min_steps or medium_steps
 	local max_steps = bucket.max_steps or medium_steps
@@ -241,14 +257,15 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 			direction = ((bucket.down_votes or 0) > (bucket.up_votes or 0)) and "down" or "up"
 		end
 	end
+
 	local forced_owner_direction = bucket.owner_tuplet and bucket.owner_tuplet.forced_direction
 	if forced_owner_direction then
 		direction = forced_owner_direction
 	end
+
 	bucket.direction = direction or "up"
 	local metrics = get_beam_glyph_metrics(state.ctx)
 	local beam_height = math.abs(metrics.height or 0)
-
 	if beam_height == 0 then
 		beam_height = spacing * 0.5
 	end
@@ -299,17 +316,19 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 		outer_attachment_y = beam_line_y - ((levels - 1) * (beam_height + beam_gap))
 	end
 
+	pd.post(#bucket.notes)
 	for _, entry in ipairs(bucket.notes or {}) do
 		if entry.is_break then
 			entry.y = beam_line_y
 		else
 			local current_y = entry.y
 			if current_y then
-				local eps = 0.01
+				local eps = 0.1
 				if
 					(direction == "down" and current_y < (outer_attachment_y - eps))
 					or (direction ~= "down" and current_y > (outer_attachment_y + eps))
 				then
+					-- pd.post(entry.note.figure)
 					extend_stem_for_tuplet(
 						state,
 						entry.note,
@@ -329,6 +348,7 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 	return bucket
 end
 
+-- ─────────────────────────────────────
 local function emit_beam_strip(state, start_x, end_x, anchor_y, align_y)
 	if not start_x or not end_x or end_x <= start_x then
 		return state
@@ -354,33 +374,6 @@ local function emit_beam_strip(state, start_x, end_x, anchor_y, align_y)
 	state.layout_right = math.max(state.layout_right or 0, end_x)
 	return state
 end
-
--- local function emit_beam_stub(state, anchor_x, anchor_y, align_y, direction)
--- 	if not anchor_x then
--- 		return state
--- 	end
--- 	local ctx = state.ctx
--- 	local align_x = (direction == "left") and "right" or "left"
--- 	local chunk =
--- 		render_utils.glyph_group(ctx, constants.TUPLET_BEAM_GLYPH, anchor_x, anchor_y, align_x, align_y, "#000000")
--- 	if chunk then
--- 		table.insert(state.notes_svg, "  " .. chunk)
--- 	end
--- 	state.layout_right = math.max(state.layout_right or 0, anchor_x)
--- 	return state
--- end
---
--- local function closest_neighbor(notes, index, step)
--- 	local cursor = index + step
--- 	while cursor >= 1 and cursor <= #notes do
--- 		local entry = notes[cursor]
--- 		if entry and not entry.is_break then
--- 			return entry
--- 		end
--- 		cursor = cursor + step
--- 	end
--- 	return nil
--- end
 
 -- ─────────────────────────────────────
 local function render_tuplet_beams(state, tuplet)
@@ -425,6 +418,7 @@ local function render_tuplet_beams(state, tuplet)
 	end
 
 	bucket = finalize_tuplet_beam_geometry(state, bucket)
+
 	table.sort(bucket.notes, function(a, b)
 		if a.index == b.index then
 			return (a.x or 0) < (b.x or 0)
@@ -546,6 +540,7 @@ local function render_tuplet_beams(state, tuplet)
 	return state
 end
 
+-- ─────────────────────────────────────
 local function draw_tuplet_glyph(state, glyph_name, x, y, align_y, flip_vertical)
 	utils.log("draw_tuplet_glyph", 2)
 	if not glyph_name or not x or not y then
@@ -572,6 +567,7 @@ local function draw_tuplet_glyph(state, glyph_name, x, y, align_y, flip_vertical
 	return state
 end
 
+-- ─────────────────────────────────────
 local function tuplet_label_sequence_from_string(label)
 	utils.log("tuplet_label_sequence_from_string", 2)
 	local seq = {}
@@ -589,6 +585,7 @@ local function tuplet_label_sequence_from_string(label)
 	return seq
 end
 
+-- ─────────────────────────────────────
 local function render_tuplet_label_at(state, label, start_x, end_x, y)
 	utils.log("render_tuplet_label_at", 2)
 	local seq = tuplet_label_sequence_from_string(label)
@@ -618,7 +615,9 @@ local function render_tuplet_label_at(state, label, start_x, end_x, y)
 	return state
 end
 
+-- ─────────────────────────────────────
 local function tuplet_family_max_depth(state, tuplet)
+	utils.log("tuplet_family_max_depth", 2)
 	if not state or not tuplet then
 		return nil
 	end
@@ -642,6 +641,7 @@ local function tuplet_family_max_depth(state, tuplet)
 	return max_depth
 end
 
+-- ─────────────────────────────────────
 render_tuplet_draw_request = function(state, request)
 	if not request or not request.tuplet then
 		return true
@@ -715,6 +715,7 @@ render_tuplet_draw_request = function(state, request)
 	return true
 end
 
+-- ─────────────────────────────────────
 flush_pending_tuplet_draws = function(state)
 	state.pending_tuplet_draws = state.pending_tuplet_draws or {}
 	if #state.pending_tuplet_draws == 0 then
@@ -731,7 +732,9 @@ flush_pending_tuplet_draws = function(state)
 	return state
 end
 
+-- ─────────────────────────────────────
 enqueue_tuplet_draw = function(state, request)
+	utils.log("enqueue_tuplet_draw", 2)
 	state.pending_tuplet_draws = state.pending_tuplet_draws or {}
 	if render_tuplet_draw_request(state, request) then
 		return state
@@ -740,6 +743,7 @@ enqueue_tuplet_draw = function(state, request)
 	return state
 end
 
+-- ─────────────────────────────────────
 local function finalize_tuplet(state, tuplet)
 	utils.log("finalize_tuplet", 2)
 
@@ -844,6 +848,7 @@ local function finalize_tuplet(state, tuplet)
 	return state
 end
 
+-- ─────────────────────────────────────
 local function handle_tuplets(state)
 	utils.log("handle_tuplets", 2)
 	local entry_index = state.current_position_index

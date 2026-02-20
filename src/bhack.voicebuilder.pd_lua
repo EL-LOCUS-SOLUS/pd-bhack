@@ -10,12 +10,13 @@ function b_voice:initialize(_, args)
 
 	-- Material
 	self.chords_raw = { { "C4" } }
+	self.noteheads_raw = { { "ord" } }
+	self.dynamics_raw = { {} }
 	self.CHORDS = {
-		{ notes = { "C4" }, noteheads = { "notehead" } },
+		{ notes = { "C4" }, noteheads = { "notehead" }, dynamics = {} },
 	}
 	self.rhythm_tree_spec = { { { 4, 4 }, { 1, 1, 1, 1 } } } -- default input
 	self.current_clef_key = "g"
-	self.noteheads_raw = { { "ord" } }
 	self.using_noteheads = false
 
 	if args then
@@ -29,6 +30,12 @@ function b_voice:initialize(_, args)
 				self["in_" .. inlet_count .. "_dddd"] = self.in_noteheads
 				self.inlets = self.inlets + 1
 				self.using_noteheads = true
+			elseif v == "-dynamics" then
+				i = i + 1
+				inlet_count = inlet_count + 1
+				self["in_" .. inlet_count .. "_dddd"] = self.in_dynamics
+				self.inlets = self.inlets + 1
+				self.using_dynamics = true
 			elseif v == "-stems" then
 				error("Not implemented stems yet")
 				i = i + 1
@@ -171,6 +178,29 @@ function b_voice:in_noteheads(atoms)
 	for i = 1, chords_size do
 		self.CHORDS[i] = self.CHORDS[i] or {}
 		self.CHORDS[i].noteheads = self.noteheads_raw[i]
+		self.CHORDS[i].dynamics = self.dynamics_raw[i]
+	end
+
+	self.Score:set_material({
+		clef = self.current_clef_key,
+		render_tree = true,
+		tree = self.rhythm_tree_spec,
+		chords = self.CHORDS,
+		bpm = self.bpm,
+	})
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_dynamics(atoms)
+	local id = atoms[1]
+	local dddd = bhack.dddd:new_fromid(self, id)
+	self.dynamics_raw = dddd:get_table()
+
+	local chords_size = #self.chords_raw
+	for i = 1, chords_size do
+		self.CHORDS[i] = self.CHORDS[i] or {}
+		self.CHORDS[i].noteheads = self.noteheads_raw[i]
+		self.CHORDS[i].dynamics = self.dynamics_raw[i]
 	end
 
 	self.Score:set_material({

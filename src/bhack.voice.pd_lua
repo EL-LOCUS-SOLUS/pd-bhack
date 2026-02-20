@@ -65,6 +65,7 @@ function b_voice:initialize(_, args)
 		draw = true,
 	})
 
+	self:repaint()
 	return true
 end
 
@@ -129,10 +130,10 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:playing_clock()
-	if self.awaiting_render then
-		self.playclock:delay(1)
-		return
-	end
+	-- if self.awaiting_render then
+	-- 	self.playclock:delay(1)
+	-- 	return
+	-- end
 
 	self.playbar_position = self.playbar_position + 1
 	local tick = math.floor(self.playbar_position)
@@ -307,13 +308,13 @@ function b_voice:in_1_dddd(atoms)
 	local id = atoms[1]
 	local dddd = bhack.dddd:new_fromid(self, id)
 	if dddd == nil then
-		self:bhack_error("dddd not found")
+		self:error("dddd not found")
 		return
 	end
 
 	local t = dddd:get_table()
 	if type(t) ~= "table" then
-		self:bhack_error("dddd payload is not a table")
+		self:error("dddd payload is not a table")
 		return
 	end
 
@@ -404,10 +405,44 @@ end
 function b_voice:in_1_midiplayback(atoms)
 	if atoms[1] > 0 then
 		self.midiplayback = true
-		self.logpost(2, "midiplayback on")
+		self:logpost(2, "[bhack.voice] midiplayback on")
 	else
 		self.midiplayback = false
-		self.logpost(2, "midiplayback off")
+		self:logpost(2, "[bhack.voice] midiplayback off")
+	end
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_1_export(atoms)
+	local path = atoms[1]
+	local ext = path:match("^.+%.([^%.]+)$")
+	if ext ~= "txt" then
+		error("[bhack.voice] Extension " .. ext .. " not supported, use .txt")
+	end
+
+	local chords = self.Score:get_all_chords()
+
+	local score = {}
+	local bpm = self.Score:get_bpm()
+	score[#score + 1] = table.concat({ "BPM", bpm }, " ")
+	score[#score + 1] = "\n"
+	score[#score + 1] = "\n"
+
+	for k, v in pairs(chords) do
+		local tokens = {}
+		local chord = v.chord
+		local oscofo_value = chord.time_sig[2] / chord.raw_figure
+		if v.is_rest then
+			tokens[1] = "REST"
+			tokens[2] = oscofo_value
+		else
+			tokens[1] = "NOTE"
+			tokens[2] = chord.notes[1].raw
+			tokens[3] = oscofo_value
+		end
+		local line = table.concat(tokens, " ")
+		score[#score + 1] = line
+		score[#score + 1] = "\n"
 	end
 end
 
@@ -556,9 +591,10 @@ function b_voice:in_1_reload()
 	package.loaded.bhack = nil
 	bhack = nil
 	for k, _ in pairs(package.loaded) do
-		if k == "score/score" or k == "score/utils" then
-			package.loaded[k] = nil
-		end
+		package.loaded[k] = nil
+		-- if k == "score/score" or k == "score/utils" then
+		-- 	package.loaded[k] = nil
+		-- end
 	end
 
 	self:dofilex(self._scriptname)
