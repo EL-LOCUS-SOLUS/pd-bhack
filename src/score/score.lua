@@ -37,7 +37,7 @@ end
 
 -- ─────────────────────────────────────
 function Score:set_ctx(ctx)
-	pd.post(#ctx.chords)
+	-- pd.post(#ctx.chords)
 	self.ctx = ctx
 end
 

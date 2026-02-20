@@ -316,7 +316,6 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 		outer_attachment_y = beam_line_y - ((levels - 1) * (beam_height + beam_gap))
 	end
 
-	pd.post(#bucket.notes)
 	for _, entry in ipairs(bucket.notes or {}) do
 		if entry.is_break then
 			entry.y = beam_line_y
