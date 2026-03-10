@@ -60,6 +60,7 @@ function b_voice:initialize(_, args)
 	self.entry = nil
 	self.previous_entry = nil
 	self.midiplayback = true
+	self.render_tree = true
 
 	-- Initialize Score
 	self.Score = bhack.score.Score:new(self.width, self.height)
@@ -108,6 +109,10 @@ end
 --╭─────────────────────────────────────╮
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
+function b_voice:in_1_render_tree(args)
+	self.render_tree = args[1] == 1
+end
+
 function b_voice:in_1_size(args)
 	if type(args) ~= "table" then
 		return
@@ -124,7 +129,7 @@ function b_voice:in_1_size(args)
 	self.Score = bhack.score.Score:new(self.width, self.height)
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = self.render_tree,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -138,7 +143,7 @@ function b_voice:in_1_fontsize(args)
 	self.Score:set_vertical_padding(size)
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = self.render_tree,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -161,7 +166,7 @@ function b_voice:in_1_clef(args)
 
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = self.render_tree,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -183,7 +188,7 @@ function b_voice:in_noteheads(atoms)
 
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = self.render_tree,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -205,7 +210,7 @@ function b_voice:in_dynamics(atoms)
 
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = self.render_tree,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -217,7 +222,7 @@ function b_voice:in_1_bpm(args)
 	self.bpm = args and args[1]
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = self.render_tree,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -242,7 +247,7 @@ function b_voice:in_1_dddd(atoms)
 	self.rhythm_tree_spec = t
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = self.render_tree,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,

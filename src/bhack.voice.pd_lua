@@ -324,6 +324,7 @@ function b_voice:in_1_dddd(atoms)
 	-- voicebuilder outputs a material-like table (clef/tree/chords/bpm) without `draw`,
 	-- but Score:set_material only computes spacing_sequence when draw is truthy.
 	if t.staff ~= nil and t.clef ~= nil and t.measures ~= nil and t.chords ~= nil then
+		t.render_tree = false
 		self.Score:set_ctx(t)
 		self:repaint()
 		return
@@ -444,6 +445,12 @@ function b_voice:in_1_export(atoms)
 		score[#score + 1] = line
 		score[#score + 1] = "\n"
 	end
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_1_outsvg(atoms)
+	local dddd = bhack.dddd:new(self, self.svg)
+	dddd:output(1)
 end
 
 -- ─────────────────────────────────────

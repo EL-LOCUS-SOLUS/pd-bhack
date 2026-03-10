@@ -1,4 +1,4 @@
-#N canvas 0 0 1299 1132 10;
+#N canvas 0 0 1860 1132 10;
 #X declare -lib xlab;
 #X declare -path ../src/;
 #X obj 213 23 declare -lib xlab;
@@ -226,9 +226,9 @@
 #X f 26;
 #X obj 283 488 else/giga.rev~;
 #X obj 213 122 t b a b, f 24;
-#X obj 526 409 s again;
-#X obj 526 389 spigot;
-#X obj 559 361 tgl 18 0 empty empty empty 0 -9 0 10 #fcfcfc #000000 #000000 0 1;
+#X obj 626 439 s again;
+#X obj 626 419 spigot;
+#X obj 659 394 tgl 18 0 empty empty empty 0 -9 0 10 #fcfcfc #000000 #000000 0 1;
 #X obj 213 63 r again;
 #N canvas 0 0 925 1132 ord 0;
 #X obj 26 25 vradio 15 1 0 10 empty empty empty 0 -8 0 10 #dcdcdc #000000 #000000 0;
@@ -386,7 +386,7 @@
 #X connect 30 0 5 0;
 #X restore 213 98 pd create-random-rhythm-trees;
 #X obj 269 465 saf.meter~ -width 8 -height 70 -frames 20 -inchs 1;
-#X obj 471 412 bng 18 250 50 0 empty empty empty 0 -9 0 10 #fcfcfc #000000 #000000;
+#X obj 603 418 bng 18 250 50 0 empty empty empty 0 -9 0 10 #fcfcfc #000000 #000000;
 #X msg 541 260 midiplayback 0;
 #X msg 314 242 reload;
 #X connect 2 0 4 0;
