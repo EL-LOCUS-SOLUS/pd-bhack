@@ -96,7 +96,7 @@ local function get_or_create_tuplet_beam_bucket(state, bucket_id, direction_hint
 end
 
 -- ─────────────────────────────────────
-local function record_tuplet_beam_note(state, chord, note, stem_metrics, direction)
+local function record_tuplet_beam_note(state, chord, note, stem_metrics, direction, next_chord)
 	if not chord or not note or not stem_metrics then
 		return
 	end
@@ -124,11 +124,17 @@ local function record_tuplet_beam_note(state, chord, note, stem_metrics, directi
 	else
 		anchor_y = stem_metrics.top_y or note.render_y or 0
 	end
+	local following = next_chord
+	if following == nil and chord then
+		following = chord.next
+	end
+	local closes_on_this_note = (following == nil) or (following.is_rest == true)
 	bucket.notes[#bucket.notes + 1] = {
 		index = state.current_position_index,
 		x = note.stem_anchor_x or anchor_x,
 		y = (stem_metrics and stem_metrics.flag_anchor_y) or anchor_y,
 		beams = beam_levels,
+		is_break = closes_on_this_note,
 		note = note,
 		stem_metrics = stem_metrics,
 		direction = direction,
@@ -218,7 +224,8 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 		if direction == "down" then
 			extreme = -math.huge
 			for _, entry in ipairs(bucket.notes or {}) do
-				if entry and not entry.is_break and entry.stem_metrics and entry.stem_metrics.bottom_y then
+				local is_note_break = entry and entry.is_break and entry.note and entry.stem_metrics
+				if entry and (not entry.is_break or is_note_break) and entry.stem_metrics and entry.stem_metrics.bottom_y then
 					extreme = math.max(extreme, entry.stem_metrics.bottom_y)
 				elseif entry and entry.is_break and entry.y then
 					extreme = math.max(extreme, entry.y)
@@ -230,7 +237,8 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 		else
 			extreme = math.huge
 			for _, entry in ipairs(bucket.notes or {}) do
-				if entry and not entry.is_break and entry.stem_metrics and entry.stem_metrics.top_y then
+				local is_note_break = entry and entry.is_break and entry.note and entry.stem_metrics
+				if entry and (not entry.is_break or is_note_break) and entry.stem_metrics and entry.stem_metrics.top_y then
 					extreme = math.min(extreme, entry.stem_metrics.top_y)
 				elseif entry and entry.is_break and entry.y then
 					extreme = math.min(extreme, entry.y)
@@ -311,7 +319,8 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 	local outer_attachment_y = beam_line_y
 
 	for _, entry in ipairs(bucket.notes or {}) do
-		if entry.is_break then
+		local is_note_break = entry and entry.is_break and entry.note and entry.stem_metrics
+		if entry.is_break and not is_note_break then
 			entry.y = beam_line_y
 		else
 			local current_y = entry.y
@@ -380,7 +389,7 @@ local function render_tuplet_beams(state, tuplet)
 
 	if bucket and bucket.notes and #bucket.notes == 1 then
 		local single = bucket.notes[1]
-		if single and not single.is_break and single.note and single.stem_metrics then
+		if single and single.note and single.stem_metrics then
 			local dir = single.direction or bucket.direction or "up"
 			local chunk, rendered_flag_metrics = stems.render_flag(state.ctx, single.note, single.stem_metrics, dir)
 			if chunk then
@@ -476,21 +485,41 @@ local function render_tuplet_beams(state, tuplet)
 				if stub_entry then
 					local stub_length = math.max((state.staff_spacing or 0) * 1.1, metrics.width or 0)
 					local target_x = nil
+					local prefer_prev = stub_entry.is_break == true
 
-					for j = run_end + 1, #notes do
-						local next_entry = notes[j]
-						if next_entry and not next_entry.is_break and next_entry.x then
-							target_x = next_entry.x
-							break
-						end
-					end
-
-					if not target_x then
+					if prefer_prev then
 						for j = run_start - 1, 1, -1 do
 							local prev_entry = notes[j]
 							if prev_entry and not prev_entry.is_break and prev_entry.x then
 								target_x = prev_entry.x
 								break
+							end
+						end
+						if not target_x then
+							for j = run_end + 1, #notes do
+								local next_entry = notes[j]
+								if next_entry and not next_entry.is_break and next_entry.x then
+									target_x = next_entry.x
+									break
+								end
+							end
+						end
+					else
+						for j = run_end + 1, #notes do
+							local next_entry = notes[j]
+							if next_entry and not next_entry.is_break and next_entry.x then
+								target_x = next_entry.x
+								break
+							end
+						end
+
+						if not target_x then
+							for j = run_start - 1, 1, -1 do
+								local prev_entry = notes[j]
+								if prev_entry and not prev_entry.is_break and prev_entry.x then
+									target_x = prev_entry.x
+									break
+								end
 							end
 						end
 					end
@@ -504,10 +533,19 @@ local function render_tuplet_beams(state, tuplet)
 							start_x = math.max(start_x - stub_length, target_x)
 							end_x = stub_entry.x or end_x
 						end
+					elseif prefer_prev then
+						start_x = start_x - stub_length
+						end_x = stub_entry.x or end_x
 					end
 
 					if end_x <= start_x then
-						end_x = start_x + math.max((state.staff_spacing or 0) * 0.8, 0.5)
+						if prefer_prev then
+							local fallback = math.max((state.staff_spacing or 0) * 0.8, 0.5)
+							start_x = (stub_entry.x or start_x) - fallback
+							end_x = stub_entry.x or (start_x + fallback)
+						else
+							end_x = start_x + math.max((state.staff_spacing or 0) * 0.8, 0.5)
+						end
 					end
 
 					state = emit_beam_strip(state, start_x, end_x, beam_anchor_y, align_y)
@@ -517,7 +555,8 @@ local function render_tuplet_beams(state, tuplet)
 		end
 		for idx = 1, #notes do
 			local entry = notes[idx]
-			local supports_level = entry and not entry.is_break and ((entry.beams or 0) >= level)
+			local is_note_break = entry and entry.is_break and entry.note ~= nil
+			local supports_level = entry and ((entry.beams or 0) >= level) and ((not entry.is_break) or is_note_break)
 			if supports_level then
 				if level > 1 and run_start then
 					local prev_entry = notes[idx - 1]
@@ -532,6 +571,9 @@ local function render_tuplet_beams(state, tuplet)
 				end
 				run_start = run_start or idx
 				run_end = idx
+				if entry.is_break then
+					flush_run()
+				end
 			else
 				flush_run()
 			end

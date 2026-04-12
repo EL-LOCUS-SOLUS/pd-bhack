@@ -893,7 +893,11 @@ local function render_stems_and_flags(state)
 	local anchor_stem_metrics = flag_note and state.stem_metrics_by_note[flag_note]
 	local tuplet_id = rhythm.chord_tuplet_id(chord)
 	if tuplet_id then
-		tuplets.record_tuplet_beam_note(state, chord, flag_note, anchor_stem_metrics, direction)
+		local next_chord = chord and chord.next
+		if not next_chord and state.chords and state.current_position_index then
+			next_chord = state.chords[state.current_position_index + 1]
+		end
+		tuplets.record_tuplet_beam_note(state, chord, flag_note, anchor_stem_metrics, direction, next_chord)
 	else
 		local flag_chunk, rendered_flag_metrics =
 			stems.render_flag(state.ctx, flag_note, anchor_stem_metrics, direction)
