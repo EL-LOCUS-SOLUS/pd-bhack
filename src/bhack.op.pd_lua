@@ -74,6 +74,7 @@ function b_op:process_and_output()
 	if maxn == 0 then
 		return
 	end
+
 	local result = {}
 	for i = 1, maxn do
 		local n1 = t1_is_table and t1[i] or t1
@@ -89,8 +90,13 @@ function b_op:process_and_output()
 		result[i] = apply_op(self.op, n1, n2)
 	end
 
-	local out_dddd = bhack.dddd:new_fromtable(self, result)
-	out_dddd:output(1)
+	if t1_is_table then
+		local out_dddd = bhack.dddd:new_fromtable(self, result)
+		out_dddd:output(1)
+	else
+		local out_dddd = bhack.dddd:new_fromtable(self, result[1])
+		out_dddd:output(1)
+	end
 end
 
 -- ─────────────────────────────────────
@@ -106,7 +112,6 @@ end
 function b_op:in_2_dddd(atoms)
 	local id = atoms[1]
 	local dddd = bhack.dddd:new_fromid(self, id)
-
 	self.dddd2 = dddd
 end
 

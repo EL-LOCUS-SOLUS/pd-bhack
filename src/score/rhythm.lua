@@ -285,7 +285,7 @@ local function rhythm_sum(entries)
 	return sum
 end
 
-local function compute_tuplet_label(reference_value, sum_value)
+local function compute_tuplet_label(reference_value, sum_value, measure)
 	utils.log("compute_tuplet_label", 2)
 	reference_value = math.max(1, math.floor(math.abs(reference_value or 1) + 0.5))
 	sum_value = math.max(1, math.floor(math.abs(sum_value or 1) + 0.5))
@@ -318,8 +318,30 @@ local function compute_tuplet_label(reference_value, sum_value)
 		end
 	end
 
-	local label = tostring(sum_value) .. ":" .. tostring(valid[#valid] or reference_value)
-	return true, label
+	--pd.post("measure up " .. measure.time_sig[1])
+	--pd.post("measure down " .. measure.time_sig[2])
+
+	local label_reference = reference_value
+	local is_measure_level_reference = false
+	if measure and measure.time_sig and tonumber(measure.time_sig[1]) then
+		label_reference = math.max(1, math.floor(math.abs(tonumber(measure.time_sig[1])) + 0.5))
+		is_measure_level_reference = (reference_value == label_reference)
+	end
+
+	if is_measure_level_reference then
+		while sum_value < label_reference do
+			sum_value = sum_value * 2
+		end
+	end
+
+	local denominator = reference_value
+	if denominator == 1 then
+		denominator = math.max(1, utils.floor_pow2(sum_value))
+	end
+
+	local label = tostring(sum_value) .. ":" .. tostring(denominator)
+	local is_tuplet = true
+	return is_tuplet, label
 end
 
 local function figure_to_notehead(value, min_measure_figure)
@@ -376,11 +398,31 @@ function Tuplet:new(up_value, rhythms, parent_context)
 	obj.rhythms = rhythms or {}
 	obj.children = {}
 	obj.is_tuplet = true
+	obj.is_beam_group_only = false
 	obj.parent = parent_context and parent_context.parent or nil
 	obj.depth = (parent_context and parent_context.depth) or 1
 	obj.require_draw = true
 	obj.beam_highest_pos = nil
 	obj.beam_lowest_pos = nil
+
+	local is_compound_eighth_meter = false
+	if parent_context and parent_context.measure and parent_context.measure.is_compound_eighth_beam_grouping then
+		is_compound_eighth_meter = parent_context.measure:is_compound_eighth_beam_grouping()
+	end
+
+	if is_compound_eighth_meter and obj.depth == 1 and obj.up_value == 1 then
+		local has_nested_tuplet = false
+		for _, child in ipairs(obj.rhythms) do
+			if is_tuplet_entry(child) then
+				has_nested_tuplet = true
+				break
+			end
+		end
+		if not has_nested_tuplet then
+			obj.is_beam_group_only = true
+			obj.require_draw = false
+		end
+	end
 
 	local parent_sum = parent_context.parent_sum
 	if parent_sum <= 0 then
@@ -391,31 +433,50 @@ function Tuplet:new(up_value, rhythms, parent_context)
 	obj.duration = container_duration * (obj.up_value / parent_sum)
 	obj.tuplet_sum = rhythm_sum(obj.rhythms)
 
-	-- pd.post(parent_context.meter_type)
-	-- pd.post(up_value)
-	if parent_context.meter_type == "binary" then
-		if utils.is_power_of_two(up_value) then
-			if utils.is_power_of_two(obj.tuplet_sum) then
-				obj.require_draw = false
+	if not obj.is_beam_group_only then
+		-- pd.post(parent_context.meter_type)
+		-- pd.post(up_value)
+		if parent_context.meter_type == "binary" then
+			if utils.is_power_of_two(up_value) then
+				if utils.is_power_of_two(obj.tuplet_sum) then
+					obj.require_draw = false
+				end
+			elseif utils.is_power_of_three(up_value) then
+				if utils.is_power_of_three(obj.tuplet_sum) then
+					obj.require_draw = false
+				end
 			end
-		elseif utils.is_power_of_three(up_value) then
-			if utils.is_power_of_three(obj.tuplet_sum) then
-				obj.require_draw = false
+		elseif parent_context.meter_type == "ternary" then
+			if utils.is_power_of_two(up_value) then
+				if utils.is_power_of_two(obj.tuplet_sum) then
+					obj.require_draw = false
+				end
+			elseif utils.is_power_of_three(up_value) then
+				if utils.is_power_of_three(obj.tuplet_sum) then
+					obj.require_draw = false
+				end
 			end
-		end
-	elseif parent_context.meter_type == "ternary" then
-		if utils.is_power_of_two(up_value) then
-			if utils.is_power_of_two(obj.tuplet_sum) then
-				obj.require_draw = false
+		else
+			local top_number = parent_context.measure.time_sig[1]
+			local n = obj.tuplet_sum // top_number
+			obj.require_draw = n > 0 and (n & (n - 1)) == 0
+			if
+				parent_context.measure.time_sig[1] > obj.tuplet_sum
+				and obj.tuplet_sum ~= 1
+				and parent_context.depth == 1
+				and parent_context.measure.is_measure_tuplet
+			then
+				obj.require_draw = true
 			end
-		elseif utils.is_power_of_three(up_value) then
-			if utils.is_power_of_three(obj.tuplet_sum) then
-				obj.require_draw = false
+
+			pd.post(parent_context.depth)
+
+			if not parent_context.measure.is_measure_tuplet then
 			end
-		end
-	else
-		if utils.is_power_of_two(obj.tuplet_sum) then
-			obj.require_draw = false
+
+			-- if utils.is_power_of_two(obj.tuplet_sum) then
+			-- obj.require_draw = false
+			-- end
 		end
 	end
 
@@ -423,14 +484,18 @@ function Tuplet:new(up_value, rhythms, parent_context)
 		obj.tuplet_sum = 1
 	end
 	obj.child_unit = (obj.duration ~= 0) and (obj.duration / obj.tuplet_sum) or 0
-	local _, label = compute_tuplet_label(obj.up_value, obj.tuplet_sum)
+	if obj.is_beam_group_only then
+		obj.label_string = nil
+	else
+		local _, label = compute_tuplet_label(obj.up_value, obj.tuplet_sum, parent_context.measure)
 
-	obj.label_string = label
-		or (
-			tostring(math.tointeger(obj.tuplet_sum) or obj.tuplet_sum)
-			.. ":"
-			.. tostring(math.tointeger(obj.up_value) or obj.up_value)
-		)
+		obj.label_string = label
+			or (
+				tostring(math.tointeger(obj.tuplet_sum) or obj.tuplet_sum)
+				.. ":"
+				.. tostring(math.tointeger(obj.up_value) or obj.up_value)
+			)
+	end
 
 	obj.start_index = 0
 	obj.end_index = 0

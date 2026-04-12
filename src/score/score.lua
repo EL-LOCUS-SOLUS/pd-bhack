@@ -362,7 +362,7 @@ function Score:export_voice_musicxml(path)
 				for _ = 1, entry.dot_level do
 					table.insert(xml_lines, "<dot/>")
 				end
-				if entry.parent_tuplet then
+				if entry.parent_tuplet and not entry.parent_tuplet.is_beam_group_only then
 					if entry.parent_tuplet.depth > 1 then
 						error(
 							"Nested tuplets are not supported by Musescore, check https://github.com/musescore/MuseScore/pull/30869"
@@ -414,7 +414,7 @@ function Score:export_voice_musicxml(path)
 					for _ = 1, entry.dot_level do
 						table.insert(xml_lines, "<dot/>")
 					end
-					if entry.parent_tuplet then
+					if entry.parent_tuplet and not entry.parent_tuplet.is_beam_group_only then
 						if entry.parent_tuplet.depth > 1 then
 							error(
 								"Nested tuplets are not supported by Musescore, check https://github.com/musescore/MuseScore/pull/30869"

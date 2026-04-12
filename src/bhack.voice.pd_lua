@@ -6,6 +6,7 @@ local n2m = require("bhack").utils.n2m
 --│           Object Creator            │
 --╰─────────────────────────────────────╯
 function b_voice:initialize(_, args)
+	pd.post("[bhack.voice] Initializing bhack.voice...")
 	self.inlets = 2
 	self.outlets = 2
 
@@ -65,6 +66,7 @@ function b_voice:initialize(_, args)
 		draw = true,
 	})
 
+	self.svg = self.Score:getsvg()
 	self:repaint()
 	return true
 end
@@ -125,6 +127,7 @@ function b_voice:clear_playbar()
 	self.is_playing = false
 	self.playbar_position = 0
 	self:outlet(2, "bang", { "bang" })
+	self.svg = self.Score:getsvg()
 	self:repaint()
 end
 
@@ -203,6 +206,30 @@ local function is_rhythm_tree(tbl)
 end
 
 -- ─────────────────────────────────────
+local function normalize_rhythm_tree_payload(tbl)
+	if type(tbl) ~= "table" then
+		return tbl
+	end
+
+	if tbl[1] == "list" and type(tbl[2]) == "table" then
+		tbl = tbl[2]
+	end
+
+	if
+		type(tbl[1]) == "table"
+		and #tbl == 2
+		and #tbl[1] == 2
+		and type(tbl[1][1]) == "number"
+		and type(tbl[1][2]) == "number"
+		and type(tbl[2]) == "table"
+	then
+		return { tbl }
+	end
+
+	return tbl
+end
+
+-- ─────────────────────────────────────
 local function get_max_measure_end_x(ctx)
 	if not ctx or type(ctx.measure_meta) ~= "table" then
 		return nil
@@ -217,6 +244,60 @@ local function get_max_measure_end_x(ctx)
 		end
 	end
 	return max_end
+end
+
+-- ─────────────────────────────────────
+local function build_measure_start_offsets_ms(ctx)
+	if not ctx then
+		return nil
+	end
+	local measures = ctx.measures or {}
+	local bpm = tonumber(ctx.bpm)
+	if not bpm or bpm <= 0 then
+		return nil
+	end
+	local ms_per_whole = (60000 / bpm) * 4
+	local starts = {}
+	local cursor = 0
+	for i, m in ipairs(measures) do
+		starts[i] = cursor
+		for _, entry in ipairs(m.entries or {}) do
+			local duration = (entry and entry.duration) or 0
+			cursor = cursor + (duration * ms_per_whole)
+		end
+	end
+	return starts, cursor
+end
+
+-- ─────────────────────────────────────
+local function absolute_tick_from_measure_offset(ctx, measure_index, offset_ms)
+	local starts = build_measure_start_offsets_ms(ctx)
+	if not starts then
+		return nil
+	end
+	local measure_start = starts[measure_index]
+	if type(measure_start) ~= "number" then
+		return nil
+	end
+	local offset = tonumber(offset_ms) or 0
+	if offset < 0 then
+		offset = 0
+	end
+	return measure_start + offset
+end
+
+-- ─────────────────────────────────────
+local function local_tick_from_absolute(ctx, start_measure, absolute_tick)
+	local starts = build_measure_start_offsets_ms(ctx)
+	if not starts then
+		return tonumber(absolute_tick) or 0
+	end
+	local measure_start = starts[start_measure]
+	if type(measure_start) ~= "number" then
+		return tonumber(absolute_tick) or 0
+	end
+	local absolute = tonumber(absolute_tick) or 0
+	return absolute - measure_start
 end
 
 --╭─────────────────────────────────────╮
@@ -245,6 +326,7 @@ function b_voice:in_1_size(args)
 		draw = true,
 	})
 
+	self.svg = self.Score:getsvg()
 	self:repaint()
 end
 
@@ -261,6 +343,8 @@ function b_voice:in_1_fontsize(args)
 		bpm = self.bpm,
 		draw = true,
 	})
+
+	self.svg = self.Score:getsvg()
 	self:repaint()
 end
 -- ─────────────────────────────────────
@@ -286,6 +370,7 @@ function b_voice:in_1_clef(args)
 		draw = true,
 	})
 
+	self.svg = self.Score:getsvg()
 	self:repaint()
 end
 
@@ -300,6 +385,8 @@ function b_voice:in_1_bpm(args)
 		bpm = self.bpm,
 		draw = true,
 	})
+
+	self.svg = self.Score:getsvg()
 	self:repaint()
 end
 
@@ -317,6 +404,7 @@ function b_voice:in_1_dddd(atoms)
 		self:error("dddd payload is not a table")
 		return
 	end
+	t = normalize_rhythm_tree_payload(t)
 
 	self.playbar_position = 0
 
@@ -326,6 +414,7 @@ function b_voice:in_1_dddd(atoms)
 	if t.staff ~= nil and t.clef ~= nil and t.measures ~= nil and t.chords ~= nil then
 		t.render_tree = false
 		self.Score:set_ctx(t)
+		self.svg = self.Score:getsvg()
 		self:repaint()
 		return
 	end
@@ -341,6 +430,8 @@ function b_voice:in_1_dddd(atoms)
 			bpm = self.bpm,
 			draw = true,
 		})
+
+		self.svg = self.Score:getsvg()
 		self:repaint()
 		return
 	end
@@ -360,6 +451,8 @@ function b_voice:in_1_dddd(atoms)
 		return
 	end
 	self.Score:set_material(t)
+
+	self.svg = self.Score:getsvg()
 	self:repaint()
 end
 
@@ -418,7 +511,7 @@ function b_voice:in_1_export(atoms)
 	local path = atoms[1]
 	local ext = path:match("^.+%.([^%.]+)$")
 	if ext ~= "txt" then
-		error("[bhack.voice] Extension " .. ext .. " not supported, use .txt")
+		error("[bhack.voice] Extension " .. tostring(ext) .. " not supported, use .txt")
 	end
 
 	local chords = self.Score:get_all_chords()
@@ -427,24 +520,65 @@ function b_voice:in_1_export(atoms)
 	local bpm = self.Score:get_bpm()
 	score[#score + 1] = table.concat({ "BPM", bpm }, " ")
 	score[#score + 1] = "\n"
-	score[#score + 1] = "\n"
 
-	for k, v in pairs(chords) do
+	local current_measure = 0
+	for _, v in pairs(chords) do
 		local tokens = {}
 		local chord = v.chord
 		local oscofo_value = chord.time_sig[2] / chord.raw_figure
+		oscofo_value = string.format("%.3f", oscofo_value)
+		oscofo_value = oscofo_value:gsub("0+$", ""):gsub("%.$", "")
+
+		if chord.measure_index ~= current_measure then
+			score[#score + 1] = "\n// Measure " .. chord.measure_index .. "\n"
+
+			current_measure = chord.measure_index
+		end
+
 		if v.is_rest then
 			tokens[1] = "REST"
 			tokens[2] = oscofo_value
 		else
-			tokens[1] = "NOTE"
-			tokens[2] = chord.notes[1].raw
-			tokens[3] = oscofo_value
+			if #chord.notes == 1 then
+				local notehead = chord.notes[1].notehead
+				if notehead == "noteheadBlack" or notehead == "noteheadHalf" or notehead == "noteheadWhole" then
+					tokens[1] = "NOTE"
+					tokens[2] = chord.notes[1].raw
+					tokens[3] = oscofo_value
+				else
+					tokens[1] = "NOTE"
+					tokens[2] = chord.notes[1].raw
+					tokens[3] = oscofo_value
+					tokens[4] = "@percussive"
+				end
+			else
+				tokens[1] = "CHORD"
+				local pitches = { "(" }
+				for k, _ in pairs(chord.notes) do
+					pitches[#pitches + 1] = k.raw
+				end
+				pitches[#pitches + 1] = ")"
+
+				tokens[2] = pitches
+				tokens[3] = oscofo_value
+			end
 		end
-		local line = table.concat(tokens, " ")
-		score[#score + 1] = line
+
+		score[#score + 1] = table.concat(tokens, " ")
 		score[#score + 1] = "\n"
 	end
+
+	local score_string = table.concat(score)
+	local dir = self:get_canvas_dir()
+	local fullpath = dir .. "/" .. path
+
+	local file, err = io.open(fullpath, "w")
+	if not file then
+		error("Failed to open file: " .. err)
+	end
+
+	file:write(score_string)
+	file:close()
 end
 
 -- ─────────────────────────────────────
@@ -482,8 +616,6 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:paint(g)
-	self.svg = self.Score:getsvg()
-
 	if self.svg == nil then
 		error("Error generating SVG")
 	end
@@ -534,13 +666,10 @@ function b_voice:paint_layer_2(g)
 			local offset_ms = self.current_play_measure_offset or 0
 			local total_measures = (self.Score and self.Score.ctx and #(self.Score.ctx.measures or {})) or 0
 			local target_measure
-			local target_offset_ms
 			if offset_ms > 0 then
 				target_measure = play_measure or 1
-				target_offset_ms = offset_ms
 			else
 				target_measure = (play_measure or 1) + 1
-				target_offset_ms = 0
 			end
 			if total_measures > 0 and target_measure > total_measures then
 				target_measure = total_measures
@@ -552,22 +681,30 @@ function b_voice:paint_layer_2(g)
 				end
 			end
 
-			local last_measure = self.last_advanced_from_measure or 0
-			local last_offset = self.last_advanced_from_offset or -1
-			local offset_delta = offset_ms - last_offset
-			local allow_update = (last_measure < (play_measure or 0))
-				or ((play_measure or 0) == last_measure and offset_delta > 1)
+			local allow_update = target_measure > (self.current_measure or 1)
 			if allow_update then
 				self.last_advanced_from_measure = play_measure
 				self.last_advanced_from_offset = offset_ms
+
+				local absolute_tick =
+					absolute_tick_from_measure_offset(self.Score and self.Score.ctx, play_measure, offset_ms)
+				if absolute_tick == nil then
+					absolute_tick = math.max(0, tonumber(self.playbar_position) or 0)
+				end
+				local target_local_tick =
+					local_tick_from_absolute(self.Score and self.Score.ctx, target_measure, absolute_tick)
+				if target_local_tick < 0 then
+					target_local_tick = 0
+				end
+
 				self.current_measure = target_measure
 				self.Score:set_current_measure_position(self.current_measure)
 				self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
-					self.Score:get_onsets(target_offset_ms)
+					self.Score:get_onsets(target_local_tick)
 				local best_entry = nil
 				local best_time = -1
 				for t, entry in pairs(self.onsets) do
-					if t <= target_offset_ms and t > best_time then
+					if t <= target_local_tick and t > best_time then
 						best_time = t
 						best_entry = entry
 					end
@@ -575,11 +712,10 @@ function b_voice:paint_layer_2(g)
 				if not best_entry then
 					best_entry = self.onsets[0]
 				end
-				self.playbar_position = math.max(0, math.floor(target_offset_ms)) - 1
-				self.last_valid_position = (best_entry and best_entry.left) or 0
-				self.last_draw_position = nil
-				self.entry = nil
-				self.previous_entry = nil
+				self.playbar_position = math.max(0, math.floor(target_local_tick)) - 1
+				self.last_valid_position = (best_entry and best_entry.left) or self.last_valid_position or 0
+				self.last_draw_position = self.last_valid_position
+				self.entry = best_entry or self.entry
 				self.awaiting_render = true
 				self:repaint()
 			end

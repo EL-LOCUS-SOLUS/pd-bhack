@@ -3,7 +3,7 @@ local b_nth = pd.Class:new():register("bhack.nth")
 
 -- ─────────────────────────────────────
 function b_nth:initialize(name, args)
-	self.inlets = 1
+	self.inlets = 2
 	self.outlets = 1
 	if args == nil or #args == 0 then
 		self:error("bhack.nth require arguments, use [bhack.nth 1] for example")
@@ -31,6 +31,11 @@ function b_nth:in_1_dddd(atoms)
 	end
 
 	nth_dddd:output(1)
+end
+
+-- ─────────────────────────────────────
+function b_nth:in_2_float(a)
+	self.nth = a
 end
 
 -- ─────────────────────────────────────

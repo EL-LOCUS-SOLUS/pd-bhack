@@ -10,6 +10,8 @@ local function create_initial_state(ctx, chords, spacing_sequence, measure_meta)
 	utils.log("create_initial_state", 2)
 	local staff = ctx.staff
 	local staff_spacing = staff.spacing
+	spacing_sequence = spacing_sequence or {}
+	measure_meta = measure_meta or {}
 
 	return {
 		ctx = ctx,
@@ -450,6 +452,8 @@ end
 -- ─────────────────────────────────────
 local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 	utils.log("draw_sequence", 2)
+	spacing_sequence = spacing_sequence or {}
+	measure_meta = measure_meta or {}
 	local state = create_initial_state(ctx, chords, spacing_sequence, measure_meta)
 	state.current_x = state.note_start_x
 	state = prepare_measure_lookups(state)

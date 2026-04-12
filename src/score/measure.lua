@@ -35,7 +35,82 @@ local function instantiate_inline_chord(spec, entry_info)
 end
 
 -- ─────────────────────────────────────
+local function additive_quarter_groups(numerator)
+	local groups = {}
+	local remaining = math.tointeger(numerator) or tonumber(numerator) or 0
+	if remaining <= 0 then
+		return groups
+	end
+
+	while remaining > 0 do
+		if remaining == 4 then
+			groups[#groups + 1] = 2
+			groups[#groups + 1] = 2
+			break
+		elseif remaining == 3 then
+			groups[#groups + 1] = 3
+			break
+		elseif remaining == 2 then
+			groups[#groups + 1] = 2
+			break
+		elseif remaining > 4 then
+			groups[#groups + 1] = 3
+			remaining = remaining - 3
+		else
+			break
+		end
+	end
+
+	return groups
+end
+
+-- ─────────────────────────────────────
+local function normalize_single_measure_span_tree(time_sig, tree)
+	if type(tree) ~= "table" or #tree ~= 1 then
+		return tree
+	end
+
+	local numerator = (time_sig and tonumber(time_sig[1])) or 0
+	local denominator = (time_sig and tonumber(time_sig[2])) or 0
+	if numerator <= 0 or denominator ~= 4 then
+		return tree
+	end
+
+	local first = tree[1]
+	if type(first) ~= "number" then
+		return tree
+	end
+
+	if math.abs(first) ~= 1 then
+		return tree
+	end
+
+	if numerator <= 4 then
+		return { (first < 0) and (-numerator) or numerator }
+	end
+
+	local groups = additive_quarter_groups(numerator)
+	if #groups <= 1 then
+		return tree
+	end
+
+	local expanded = {}
+	local is_rest = first < 0
+	for i, group in ipairs(groups) do
+		local value = is_rest and -group or group
+		if not is_rest and i < #groups then
+			expanded[#expanded + 1] = tostring(value) .. "_"
+		else
+			expanded[#expanded + 1] = value
+		end
+	end
+
+	return expanded
+end
+
+-- ─────────────────────────────────────
 function Measure:new(time_sig, tree, number)
+	tree = normalize_single_measure_span_tree(time_sig, tree)
 	local measure_sum = 0
 	for i = 1, #tree do
 		local value = rhythm.rhythm_value(tree[i])
@@ -51,7 +126,10 @@ function Measure:new(time_sig, tree, number)
 	obj:get_measure_min_fig()
 
 	if obj:is_tuplet() then
-		obj.tree = { { obj.time_sig[1], tree } }
+		obj.tree = { { obj.time_sig[1], obj.tree } }
+		obj.is_measure_tuplet = true
+	else
+		obj.is_measure_tuplet = false
 	end
 
 	obj:build()
@@ -59,10 +137,56 @@ function Measure:new(time_sig, tree, number)
 end
 
 -- ─────────────────────────────────────
+function Measure:is_compound_eighth_beam_grouping()
+	local numerator = (self.time_sig and tonumber(self.time_sig[1])) or 0
+	local denominator = (self.time_sig and tonumber(self.time_sig[2])) or 0
+	if numerator <= 0 or denominator ~= 8 or (numerator % 3) ~= 0 then
+		return false
+	end
+
+	if type(self.tree) ~= "table" or #self.tree == 0 then
+		return false
+	end
+
+	local subdivisions = 0
+	for _, entry in ipairs(self.tree) do
+		if not rhythm.is_tuplet_entry(entry) then
+			return false
+		end
+
+		local up_value = math.abs(entry[1] or 0)
+		if up_value ~= 1 then
+			return false
+		end
+
+		local children = entry[2]
+		if type(children) ~= "table" or #children == 0 then
+			return false
+		end
+
+		for _, child in ipairs(children) do
+			if rhythm.is_tuplet_entry(child) then
+				return false
+			end
+		end
+
+		subdivisions = subdivisions + rhythm.rhythm_sum(children)
+	end
+
+	return subdivisions == numerator
+end
+
+-- ─────────────────────────────────────
 function Measure:is_tuplet()
+	if self:is_compound_eighth_beam_grouping() then
+		self.is_tuplet_flag = false
+		self.tuplet_string = nil
+		return false
+	end
+
 	local numerator = self.time_sig[1] or 0
 	local sum = self.measure_sum or 0
-	local is_tuplet, label = rhythm.compute_tuplet_label(numerator, sum)
+	local is_tuplet, label = rhythm.compute_tuplet_label(numerator, sum, self)
 	self.is_tuplet_flag = is_tuplet
 	self.tuplet_string = label
 	return is_tuplet
@@ -157,6 +281,7 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 				container_duration = container_duration,
 				depth = tuple_depth,
 				meter_type = self.meter_type,
+				measure = self,
 			})
 
 			tuple_obj.parent = parent_tuplet
@@ -223,8 +348,32 @@ end
 
 -- ─────────────────────────────────────
 function Measure:get_measure_min_fig()
-	local fig = (self.measure_sum / self.time_sig[1]) * self.time_sig[2]
-	self.min_figure = utils.floor_pow2(fig)
+	local numerator = (self.time_sig and tonumber(self.time_sig[1])) or 1
+	local denominator = (self.time_sig and tonumber(self.time_sig[2])) or 1
+	if numerator <= 0 then
+		numerator = 1
+	end
+	if denominator <= 0 then
+		denominator = 1
+	end
+
+	if self:is_compound_eighth_beam_grouping() then
+		self.min_figure = math.max(1, denominator)
+		return
+	end
+
+	local effective_sum = self.measure_sum
+	if effective_sum < numerator then
+		local is_tuplet = rhythm.compute_tuplet_label(numerator, effective_sum, self)
+		if is_tuplet then
+			while effective_sum < numerator do
+				effective_sum = effective_sum * 2
+			end
+		end
+	end
+
+	local fig = (effective_sum / numerator) * denominator
+	self.min_figure = math.max(1, utils.floor_pow2(fig))
 end
 
 -- ─────────────────────────────────────

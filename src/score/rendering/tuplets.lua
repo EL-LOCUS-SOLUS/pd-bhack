@@ -132,6 +132,7 @@ local function record_tuplet_beam_note(state, chord, note, stem_metrics, directi
 		note = note,
 		stem_metrics = stem_metrics,
 		direction = direction,
+		parent_tuplet_id = chord and chord.parent_tuplet and chord.parent_tuplet.id or nil,
 	}
 	bucket.min_y = bucket.min_y and math.min(bucket.min_y, anchor_y) or anchor_y
 	bucket.max_y = bucket.max_y and math.max(bucket.max_y, anchor_y) or anchor_y
@@ -307,14 +308,7 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 	end
 	bucket.beam_line_y = beam_line_y
 
-	local beam_gap = spacing * 0.18
-	local levels = math.max(1, bucket.max_level or 1)
-	local outer_attachment_y
-	if direction == "down" then
-		outer_attachment_y = beam_line_y + ((levels - 1) * (beam_height + beam_gap))
-	else
-		outer_attachment_y = beam_line_y - ((levels - 1) * (beam_height + beam_gap))
-	end
+	local outer_attachment_y = beam_line_y
 
 	for _, entry in ipairs(bucket.notes or {}) do
 		if entry.is_break then
@@ -430,7 +424,7 @@ local function render_tuplet_beams(state, tuplet)
 	if beam_height == 0 then
 		beam_height = (state.staff_spacing or 0) * 0.25
 	end
-	local beam_gap = (state.staff_spacing or 0) * 0.18
+	local beam_gap = (state.staff_spacing or 0) * 0.3
 	local direction = bucket.direction or "up"
 	local align_y = "top"
 
@@ -439,14 +433,12 @@ local function render_tuplet_beams(state, tuplet)
 		base_line_y = (state.ctx and state.ctx.staff and state.ctx.staff.center) or 0
 	end
 	local max_level = bucket.max_level or 0
-	local levels = math.max(1, max_level)
 	if direction == "down" then
-		tuplet.beam_lowest_pos = base_line_y + ((levels - 1) * (beam_height + beam_gap))
+		tuplet.beam_lowest_pos = base_line_y
 	else
-		tuplet.beam_highest_pos = base_line_y - ((levels - 1) * (beam_height + beam_gap))
+		tuplet.beam_highest_pos = base_line_y
 	end
 	local notes = bucket.notes
-	local flagged_singletons = setmetatable({}, { __mode = "k" })
 
 	for level = 1, max_level do
 		local run_start, run_end = nil, nil
@@ -460,9 +452,9 @@ local function render_tuplet_beams(state, tuplet)
 			local base_y = base_line_y
 			local level_y
 			if direction == "down" then
-				level_y = base_y + ((level - 1) * (beam_height + beam_gap))
-			else
 				level_y = base_y - ((level - 1) * (beam_height + beam_gap))
+			else
+				level_y = base_y + ((level - 1) * (beam_height + beam_gap))
 			end
 
 			local beam_anchor_y = level_y
@@ -481,23 +473,44 @@ local function render_tuplet_beams(state, tuplet)
 				state = emit_beam_strip(state, start_x, end_x, beam_anchor_y, align_y)
 			else
 				local stub_entry = first_entry
-				if stub_entry and not flagged_singletons[stub_entry] then
-					local chunk, rendered_flag_metrics =
-						stems.render_flag(state.ctx, stub_entry.note, stub_entry.stem_metrics, direction)
-					if chunk then
-						table.insert(state.notes_svg, "  " .. chunk)
-						if rendered_flag_metrics and rendered_flag_metrics.absolute_max_x then
-							local flag_right = rendered_flag_metrics.absolute_max_x
-							if flag_right then
-								local flag_padding = (state.staff_spacing or 0) * 0.3
-								local padded_right = flag_right + flag_padding
-								if (not state.chord_rightmost) or (padded_right > state.chord_rightmost) then
-									state.chord_rightmost = padded_right
-								end
+				if stub_entry then
+					local stub_length = math.max((state.staff_spacing or 0) * 1.1, metrics.width or 0)
+					local target_x = nil
+
+					for j = run_end + 1, #notes do
+						local next_entry = notes[j]
+						if next_entry and not next_entry.is_break and next_entry.x then
+							target_x = next_entry.x
+							break
+						end
+					end
+
+					if not target_x then
+						for j = run_start - 1, 1, -1 do
+							local prev_entry = notes[j]
+							if prev_entry and not prev_entry.is_break and prev_entry.x then
+								target_x = prev_entry.x
+								break
 							end
 						end
 					end
-					flagged_singletons[stub_entry] = true
+
+					local start_x = stub_entry.x or 0
+					local end_x = start_x + stub_length
+					if target_x then
+						if target_x >= start_x then
+							end_x = math.min(start_x + stub_length, target_x)
+						else
+							start_x = math.max(start_x - stub_length, target_x)
+							end_x = stub_entry.x or end_x
+						end
+					end
+
+					if end_x <= start_x then
+						end_x = start_x + math.max((state.staff_spacing or 0) * 0.8, 0.5)
+					end
+
+					state = emit_beam_strip(state, start_x, end_x, beam_anchor_y, align_y)
 				end
 			end
 			run_start, run_end = nil, nil
@@ -506,6 +519,17 @@ local function render_tuplet_beams(state, tuplet)
 			local entry = notes[idx]
 			local supports_level = entry and not entry.is_break and ((entry.beams or 0) >= level)
 			if supports_level then
+				if level > 1 and run_start then
+					local prev_entry = notes[idx - 1]
+					if
+						prev_entry
+						and not prev_entry.is_break
+						and ((prev_entry.beams or 0) >= level)
+						and prev_entry.parent_tuplet_id ~= entry.parent_tuplet_id
+					then
+						flush_run()
+					end
+				end
 				run_start = run_start or idx
 				run_end = idx
 			else

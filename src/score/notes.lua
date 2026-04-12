@@ -45,9 +45,9 @@ end
 
 -- ─────────────────────────────────────
 local function chord_figure_notehead_suffix(chord)
-	local base = chord and chord.notehead
+	local base = rhythm.figure_to_notehead(chord and chord.value, chord and chord.min_figure)
 	if type(base) ~= "string" or not base:match("^notehead") then
-		base = (rhythm.figure_to_notehead(chord and chord.value, chord and chord.min_figure))
+		base = chord and chord.notehead
 	end
 	local suffix = type(base) == "string" and base:match("^notehead(.+)$") or nil
 	if not suffix or suffix == "" then
@@ -62,6 +62,17 @@ local function resolve_notehead_glyph(name_or_glyph, figure_suffix)
 	if s == nil then
 		return nil
 	end
+	if s == "" then
+		return "notehead" .. tostring(figure_suffix or "Black")
+	end
+	local plain_duration = s:match("^notehead(Black|Half|Whole)$")
+	if plain_duration then
+		return "notehead" .. tostring(figure_suffix or plain_duration)
+	end
+	local lower = s:lower()
+	if lower == "black" or lower == "half" or lower == "whole" then
+		return "notehead" .. tostring(figure_suffix or "Black")
+	end
 	if s:match("^notehead") then
 		if s == "notehead" then
 			return "notehead" .. tostring(figure_suffix or "Black")
@@ -69,6 +80,15 @@ local function resolve_notehead_glyph(name_or_glyph, figure_suffix)
 		return s
 	end
 	return "notehead" .. s .. tostring(figure_suffix or "Black")
+end
+
+-- ─────────────────────────────────────
+local function has_effective_explicit_notehead(name_or_glyph)
+	local s = normalize_notehead_name(name_or_glyph)
+	if s == nil or s == "" then
+		return false
+	end
+	return true
 end
 
 -- ─────────────────────────────────────
@@ -143,7 +163,7 @@ local function build_chord_notes(chord, notes)
 			is_tied = chord.is_tied or false,
 			stem = chord.stem,
 			notehead = resolved,
-			has_explicit_notehead = (explicit_notehead ~= nil),
+			has_explicit_notehead = has_effective_explicit_notehead(explicit_notehead),
 			chord = chord,
 		})
 		table.insert(chord.notes, note_obj)
@@ -268,7 +288,7 @@ function Chord:populate_notes(notes_or_spec)
 			stem = self.stem,
 			dynamic = self.dynamic,
 			notehead = resolved,
-			has_explicit_notehead = (name_or_glyph ~= nil),
+			has_explicit_notehead = has_effective_explicit_notehead(name_or_glyph),
 			chord = self,
 		})
 		table.insert(self.notes, note_obj)
