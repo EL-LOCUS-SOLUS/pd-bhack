@@ -138,11 +138,39 @@ local function beam_count_for_figure(value, min_figure)
 end
 
 -- ─────────────────────────────────────
+local function beam_figure_for_chord(chord)
+	if not chord then
+		return nil
+	end
+
+	local figure = tonumber(chord.figure)
+	local raw_figure = tonumber(chord.raw_figure)
+
+	if figure and figure > 0 then
+		-- Keep floor-based behavior; only lift values close to the eighth boundary.
+		if figure < 8 and raw_figure and raw_figure >= 6 and raw_figure < 8 then
+			return 8
+		end
+		return figure
+	end
+
+	if raw_figure and raw_figure > 0 then
+		if raw_figure >= 6 and raw_figure < 8 then
+			return 8
+		end
+		local quantized = math.tointeger(utils.floor_pow2(raw_figure))
+		return quantized or raw_figure
+	end
+
+	return nil
+end
+
+-- ─────────────────────────────────────
 local function beam_count_for_chord(chord)
 	if not chord then
 		return 0
 	end
-	local figure = tonumber(chord.figure)
+	local figure = beam_figure_for_chord(chord)
 	if figure and figure > 0 then
 		if figure < 8 then
 			return 0
@@ -469,7 +497,7 @@ function Tuplet:new(up_value, rhythms, parent_context)
 				obj.require_draw = true
 			end
 
-			pd.post(parent_context.depth)
+			--pd.post(parent_context.depth)
 
 			if not parent_context.measure.is_measure_tuplet then
 			end
@@ -521,6 +549,7 @@ return {
 	compute_chord_stem_direction = compute_chord_stem_direction,
 	ensure_chord_stem_direction = ensure_chord_stem_direction,
 	beam_count_for_figure = beam_count_for_figure,
+	beam_figure_for_chord = beam_figure_for_chord,
 	beam_count_for_chord = beam_count_for_chord,
 	chord_tuplet_id = chord_tuplet_id,
 	tuplet_chain = tuplet_chain,

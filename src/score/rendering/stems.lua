@@ -19,9 +19,10 @@ end
 local function resolve_flag_glyph(note, direction)
 	utils.log("resolve_flag_glyph", 2)
 
-	local value = note.value
-	local min_figure = note.min_figure
-	local _, figure = rhythm.compute_figure(value, min_figure)
+	local figure = rhythm.beam_figure_for_chord((note and note.chord) or note)
+	if not figure or figure < 8 then
+		return nil
+	end
 
 	local glyph = "flag" .. tostring(math.tointeger(figure))
 	if figure == 32 then

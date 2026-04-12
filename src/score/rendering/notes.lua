@@ -1129,8 +1129,8 @@ local function render_elements(state)
 		state = render_notes_and_chords(state)
 		state = ties.resolve_ties_for_chord(state)
 
-		local _, final_figure = rhythm.compute_figure(chord.value, chord.min_figure)
-		if final_figure < 8 then
+		local beam_figure = rhythm.beam_figure_for_chord(chord)
+		if not beam_figure or beam_figure < 8 then
 			tuplets.record_tuplet_break(state, chord)
 		end
 	elseif chord and chord.is_rest then
