@@ -284,8 +284,13 @@ function b_chords:in_1_dddd(atoms)
 	if dddd == nil then
 		error("dddd not found")
 	end
+
 	if dddd.depth == 1 then
-		error("dddd must be of depth 2 for chords/arpeggios")
+		local t = dddd:get_table()
+		for k, v in pairs(dddd:get_table()) do
+			t[k] = { v }
+		end
+		self.CHORDS = t
 	else
 		self.CHORDS = dddd:get_table()
 	end

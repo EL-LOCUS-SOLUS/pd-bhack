@@ -436,6 +436,7 @@ local function render_tuplet_beams(state, tuplet)
 	local beam_gap = (state.staff_spacing or 0) * 0.3
 	local direction = bucket.direction or "up"
 	local align_y = "top"
+	local flagged_singleton_runs = {}
 
 	local base_line_y = bucket.beam_line_y
 	if not base_line_y then
@@ -483,6 +484,17 @@ local function render_tuplet_beams(state, tuplet)
 			else
 				local stub_entry = first_entry
 				if stub_entry then
+					if level == 1 and stub_entry.note and stub_entry.stem_metrics then
+						-- Keep grouping analysis, but render isolated primary runs as flags.
+						flagged_singleton_runs[run_start] = stub_entry
+						run_start, run_end = nil, nil
+						return
+					end
+					if level > 1 and flagged_singleton_runs[run_start] then
+						run_start, run_end = nil, nil
+						return
+					end
+
 					local stub_length = math.max((state.staff_spacing or 0) * 1.1, metrics.width or 0)
 					local target_x = nil
 					local prefer_prev = stub_entry.is_break == true
@@ -579,6 +591,27 @@ local function render_tuplet_beams(state, tuplet)
 			end
 		end
 		flush_run()
+	end
+
+	for idx = 1, #notes do
+		local entry = flagged_singleton_runs[idx]
+		if entry and entry.note and entry.stem_metrics then
+			local dir = entry.direction or bucket.direction or direction or "up"
+			local chunk, rendered_flag_metrics = stems.render_flag(state.ctx, entry.note, entry.stem_metrics, dir)
+			if chunk then
+				table.insert(state.notes_svg, "  " .. chunk)
+				if rendered_flag_metrics and rendered_flag_metrics.absolute_max_x then
+					local flag_right = rendered_flag_metrics.absolute_max_x
+					if flag_right then
+						local flag_padding = (state.staff_spacing or 0) * 0.3
+						local padded_right = flag_right + flag_padding
+						if (not state.chord_rightmost) or (padded_right > state.chord_rightmost) then
+							state.chord_rightmost = padded_right
+						end
+					end
+				end
+			end
+		end
 	end
 
 	state.tuplet_beam_geometry = state.tuplet_beam_geometry or {}

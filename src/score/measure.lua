@@ -292,6 +292,11 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 				measure = self,
 			})
 
+			if tuple_obj.is_beam_group_only then
+				-- Beam-group-only pseudo-tuplets in compound meters should keep the parent base figure.
+				tuplet_min_figure = parent_min_figure
+			end
+
 			tuple_obj.parent = parent_tuplet
 			tuple_obj.depth = tuple_depth
 			tuple_obj.start_index = #self.entries + 1
@@ -370,18 +375,42 @@ function Measure:get_measure_min_fig()
 		return
 	end
 
+	local function nearest_pow2(value)
+		if not value or value <= 1 then
+			return 1
+		end
+		local lower = utils.floor_pow2(value)
+		if lower <= 0 then
+			return 1
+		end
+		local upper = lower * 2
+		local lower_distance = math.abs(value - lower)
+		local upper_distance = math.abs(upper - value)
+		if upper_distance < lower_distance then
+			return upper
+		end
+		return lower
+	end
+
 	local effective_sum = self.measure_sum
-	if effective_sum < numerator then
-		local is_tuplet = rhythm.compute_tuplet_label(numerator, effective_sum, self)
-		if is_tuplet then
-			while effective_sum < numerator do
-				effective_sum = effective_sum * 2
+	if effective_sum == 1 and type(self.tree) == "table" and #self.tree == 1 then
+		local first = self.tree[1]
+		if rhythm.is_tuplet_entry(first) and math.abs(tonumber(first[1]) or 0) == 1 and type(first[2]) == "table" then
+			local child_sum = rhythm.rhythm_sum(first[2])
+			if child_sum and child_sum > 1 then
+				effective_sum = child_sum
 			end
 		end
 	end
 
+	local is_tuplet = rhythm.compute_tuplet_label(numerator, effective_sum, self)
+
 	local fig = (effective_sum / numerator) * denominator
-	self.min_figure = math.max(1, utils.floor_pow2(fig))
+	if is_tuplet then
+		self.min_figure = math.max(1, nearest_pow2(fig))
+	else
+		self.min_figure = math.max(1, utils.floor_pow2(fig))
+	end
 end
 
 -- ─────────────────────────────────────

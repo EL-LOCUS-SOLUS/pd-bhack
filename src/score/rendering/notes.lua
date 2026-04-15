@@ -234,6 +234,10 @@ local function resolve_rest_glyph(rest)
 
 	local figure = rest.min_figure / rest.value
 	figure = utils.ceil_pow2(figure)
+	local raw_figure = tonumber(rest.raw_figure)
+	if raw_figure and raw_figure >= 6 and raw_figure < 8 then
+		figure = 8
+	end
 
 	if figure <= 1 then
 		return "restWhole"

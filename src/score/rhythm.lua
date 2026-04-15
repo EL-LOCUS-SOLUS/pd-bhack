@@ -317,6 +317,55 @@ local function compute_tuplet_label(reference_value, sum_value, measure)
 	utils.log("compute_tuplet_label", 2)
 	reference_value = math.max(1, math.floor(math.abs(reference_value or 1) + 0.5))
 	sum_value = math.max(1, math.floor(math.abs(sum_value or 1) + 0.5))
+	local function normalize_measure_level_sum(value, target)
+		local best = value
+		local best_distance = math.abs(best - target)
+
+		local function should_replace(candidate)
+			local distance = math.abs(candidate - target)
+			if distance < best_distance then
+				return true
+			end
+			if distance > best_distance then
+				return false
+			end
+
+			local candidate_above = candidate >= target
+			local best_above = best >= target
+			if candidate_above ~= best_above then
+				-- On ties prefer candidates at/above the target (e.g. 4:3 over 2:3).
+				return candidate_above
+			end
+
+			if candidate_above then
+				return candidate < best
+			end
+			return candidate > best
+		end
+
+		local down = value
+		while down > 1 and (down % 2) == 0 do
+			down = down // 2
+			if should_replace(down) then
+				best = down
+				best_distance = math.abs(best - target)
+			end
+		end
+
+		local up = value
+		for _ = 1, 16 do
+			up = up * 2
+			if should_replace(up) then
+				best = up
+				best_distance = math.abs(best - target)
+			end
+			if up > target and (up - target) > best_distance and best >= target then
+				break
+			end
+		end
+
+		return best
+	end
 	local valid = {}
 	valid[1] = 1
 
@@ -357,9 +406,7 @@ local function compute_tuplet_label(reference_value, sum_value, measure)
 	end
 
 	if is_measure_level_reference then
-		while sum_value < label_reference do
-			sum_value = sum_value * 2
-		end
+		sum_value = normalize_measure_level_sum(sum_value, label_reference)
 	end
 
 	local denominator = reference_value
@@ -498,6 +545,13 @@ function Tuplet:new(up_value, rhythms, parent_context)
 				and parent_context.measure.is_measure_tuplet
 			then
 				obj.require_draw = true
+			end
+
+			if not obj.require_draw and parent_context.depth > 1 then
+				local nested_is_tuplet = compute_tuplet_label(up_value, obj.tuplet_sum, parent_context.measure)
+				if nested_is_tuplet then
+					obj.require_draw = true
+				end
 			end
 
 			--pd.post(parent_context.depth)

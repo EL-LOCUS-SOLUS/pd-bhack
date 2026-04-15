@@ -30,7 +30,6 @@
 #X obj 266 223 bhack.op * 251, f 18;
 #X obj 191 120 bhack.arithmser 1 10 1, f 33;
 #X obj 266 245 bhack.ftom;
-#X obj 266 289 bhack.list 1;
 #X obj 266 267 bhack.mton 24edo;
 #X msg 281 377 play;
 #X connect 0 0 4 0;
@@ -59,7 +58,6 @@
 #X connect 26 0 22 0;
 #X connect 27 0 29 0;
 #X connect 28 0 8 0;
-#X connect 29 0 31 0;
+#X connect 29 0 30 0;
 #X connect 30 0 9 1;
-#X connect 31 0 30 0;
-#X connect 32 0 10 0;
+#X connect 31 0 10 0;
