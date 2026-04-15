@@ -22,7 +22,7 @@ function b_op:initialize(_, args)
 		for i = 2, #args do
 			newargs[i - 1] = args[i]
 		end
-		self.dddd2 = bhack.dddd:new_fromtable(self, newargs)
+		self.dddd2 = bhack.dddd:new_from_table(self, newargs)
 	end
 
 	return true
@@ -91,10 +91,12 @@ function b_op:process_and_output()
 	end
 
 	if t1_is_table then
-		local out_dddd = bhack.dddd:new_fromtable(self, result)
+		local copied = result
+		local out_dddd = bhack.dddd:new_from_table(self, copied)
 		out_dddd:output(1)
 	else
-		local out_dddd = bhack.dddd:new_fromtable(self, result[1])
+		local copied = result[1]
+		local out_dddd = bhack.dddd:new_from_table(self, copied)
 		out_dddd:output(1)
 	end
 end
@@ -102,16 +104,21 @@ end
 -- ─────────────────────────────────────
 function b_op:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
-
+	local dddd = bhack.dddd:new_from_id(self, id)
 	self.dddd1 = dddd
+
+	-- self.dddd1:print()
+	-- self.dddd2:print()
+
+	-- self.dddd2 = dddd:deep_copy_table(self.dddd2)
+
 	self:process_and_output()
 end
 
 -- ─────────────────────────────────────
 function b_op:in_2_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	self.dddd2 = dddd
 end
 

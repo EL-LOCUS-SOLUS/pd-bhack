@@ -13,7 +13,7 @@ end
 --╰─────────────────────────────────────╯
 function nthrandom:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	if dddd == nil then
 		self:error("[bhack.nth-random] dddd not found")
 		return

@@ -176,7 +176,7 @@ end
 -- ─────────────────────────────────────
 function b_voice:in_noteheads(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	self.noteheads_raw = dddd:get_table()
 
 	local chords_size = #self.chords_raw
@@ -198,7 +198,7 @@ end
 -- ─────────────────────────────────────
 function b_voice:in_dynamics(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	self.dynamics_raw = dddd:get_table()
 
 	local chords_size = #self.chords_raw
@@ -232,7 +232,7 @@ end
 -- ─────────────────────────────────────
 function b_voice:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 
 	if dddd == nil then
 		self:bhack_error("dddd not found")
@@ -263,8 +263,8 @@ function b_voice:in_1_dddd(atoms)
 		bpm = self.bpm,
 	}
 
-	local ctx_dddd = bhack.dddd:new_fromtable(self, newt)
-	ctx_dddd:settype("voice")
+	local ctx_dddd = bhack.dddd:new_from_table(self, newt)
+	ctx_dddd:set_type("voice")
 	ctx_dddd:output(1)
 end
 
@@ -290,7 +290,7 @@ end
 -- ─────────────────────────────────────
 function b_voice:in_2_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	if dddd == nil then
 		error("[bhack.voicebuild] dddd not found")
 		return

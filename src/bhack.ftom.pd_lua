@@ -20,26 +20,21 @@ end
 -- ─────────────────────────────────────
 function f2m_dddd:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.get_dddd_fromid(self, id)
-	if dddd == nil then
-		self:bhack_error("dddd not found")
-		return
-	end
-
-	local t = dddd:get_table()
-	local converted = {}
-	if type(t) == "table" then
-		for i, v in ipairs(t) do
+	local mydddd = bhack.dddd:new_from_id(self, id)
+	local value = mydddd:get_table()
+	if type(value) == "table" then
+		local converted = {}
+		for _, v in ipairs(value) do
 			local midi_note = self:frequency_to_midi_note(v)
 			table.insert(converted, midi_note)
 		end
+		local out_dddd = bhack.dddd:new_from_table(self, converted)
+		out_dddd:output(1)
 	else
-		local midi_note = self:frequency_to_midi_note(t)
-		converted = midi_note
+		local midi_note = self:frequency_to_midi_note(value)
+		local out_dddd = bhack.dddd:new_from_table(self, midi_note)
+		out_dddd:output(1)
 	end
-
-	local out_dddd = bhack.dddd:new_fromtable(self, converted)
-	out_dddd:output(1)
 end
 
 -- ─────────────────────────────────────

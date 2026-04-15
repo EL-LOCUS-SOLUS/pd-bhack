@@ -477,7 +477,10 @@ function Tuplet:new(up_value, rhythms, parent_context)
 		elseif parent_context.meter_type == "ternary" then
 			if utils.is_power_of_two(up_value) then
 				if utils.is_power_of_two(obj.tuplet_sum) then
-					obj.require_draw = false
+					local is_measure_span = (parent_context.depth == 1) and (math.abs(parent_sum - 1) < 1e-9)
+					if not is_measure_span then
+						obj.require_draw = false
+					end
 				end
 			elseif utils.is_power_of_three(up_value) then
 				if utils.is_power_of_three(obj.tuplet_sum) then
@@ -516,6 +519,20 @@ function Tuplet:new(up_value, rhythms, parent_context)
 		obj.label_string = nil
 	else
 		local _, label = compute_tuplet_label(obj.up_value, obj.tuplet_sum, parent_context.measure)
+		if not label and obj.require_draw and obj.up_value == 1 and obj.depth == 1 then
+			local measure_numerator = parent_context
+				and parent_context.measure
+				and parent_context.measure.time_sig
+				and tonumber(parent_context.measure.time_sig[1])
+			if measure_numerator and measure_numerator > 0 then
+				local normalized_numerator = math.max(1, math.floor(math.abs(measure_numerator) + 0.5))
+				if normalized_numerator ~= obj.tuplet_sum then
+					label = tostring(math.tointeger(obj.tuplet_sum) or obj.tuplet_sum)
+						.. ":"
+						.. tostring(normalized_numerator)
+				end
+			end
+		end
 
 		obj.label_string = label
 			or (

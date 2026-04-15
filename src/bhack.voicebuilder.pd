@@ -1,5 +1,6 @@
 #N canvas 0 0 925 1132 10;
 #X declare -lib else;
+#X declare -lib xlab;
 #N canvas 0 0 925 1132 random 0;
 #X obj 528 380 declare -lib else;
 #X obj 29 119 bhack.define;
@@ -108,16 +109,11 @@
 #X obj 171 403 bhack.getkey dynamic;
 #X obj 171 425 print;
 #X msg 24 43 list ((4 4) (1 1 1 1)) ((4 4) (1 2 1));
-#X connect 1 0 8 0;
-#X connect 2 0 8 0;
-#X connect 3 0 8 1;
-#X connect 4 0 8 2;
+#X obj 3 2 declare -lib xlab;
 #X connect 5 0 13 0;
 #X connect 5 0 18 0;
 #X connect 6 0 5 0;
 #X connect 7 0 4 0;
-#X connect 8 0 5 0;
-#X connect 9 0 8 3;
 #X connect 10 0 9 0;
 #X connect 11 0 5 0;
 #X connect 12 0 11 0;

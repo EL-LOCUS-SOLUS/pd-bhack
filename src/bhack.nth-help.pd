@@ -1,11 +1,11 @@
 #N canvas 0 0 925 1132 10;
-#X declare -lib else;
+#X declare -lib xlab;
 #X msg 108 119 1 2 3;
-#X obj 3 4 declare -lib else;
 #X obj 108 144 bhack.define;
 #X obj 108 229 bhack.print;
 #X obj 108 197 bhack.nth 2;
 #X text 122 2 Get <n> item from a table;
-#X connect 0 0 2 0;
-#X connect 2 0 4 0;
-#X connect 4 0 3 0;
+#X obj 3 4 declare -lib xlab;
+#X connect 0 0 1 0;
+#X connect 1 0 3 0;
+#X connect 3 0 2 0;

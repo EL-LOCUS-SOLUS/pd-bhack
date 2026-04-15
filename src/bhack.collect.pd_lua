@@ -19,19 +19,19 @@ end
 -- ─────────────────────────────────────
 function b_collect:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	local t = dddd:get_table()[1]
 	if t == "begin" then
 		self.collected_table = {}
 	elseif t == "end" then
-		local newdddd = bhack.dddd:new_fromtable(self, self.collected_table)
+		local newdddd = bhack.dddd:new_from_table(self, self.collected_table)
 		newdddd:output(1)
 	end
 end
 -- ─────────────────────────────────────
 function b_collect:in_2_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	local t = dddd:get_table()
 
 	table.insert(self.collected_table, dddd:deep_copy_table(t))

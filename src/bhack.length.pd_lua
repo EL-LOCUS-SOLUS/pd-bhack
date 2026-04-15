@@ -12,7 +12,7 @@ end
 -- ─────────────────────────────────────
 function b_len:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 
 	self:outlet(1, "float", { #dddd:get_table() })
 end

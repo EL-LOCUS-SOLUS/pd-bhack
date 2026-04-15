@@ -12,21 +12,21 @@ end
 -- ─────────────────────────────────────
 function iterate:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	if dddd == nil then
 		self:bhack_error("dddd not found")
 		return
 	end
-	bhack.dddd:new_fromtable(self, { "begin" }):output(1)
+	bhack.dddd:new_from_table(self, { "begin" }):output(1)
 	local t = dddd:get_table()
 
 	for _, v in ipairs(t) do
-		local dddd_i = bhack.dddd:new_fromtable(self, v)
+		local dddd_i = bhack.dddd:new_from_table(self, v)
 		dddd_i:output(2)
 
 	end
 
-	bhack.dddd:new_fromtable(self, { "end" }):output(1)
+	bhack.dddd:new_from_table(self, { "end" }):output(1)
 end
 
 -- ─────────────────────────────────────

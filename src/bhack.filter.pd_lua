@@ -18,7 +18,7 @@ end
 -- ─────────────────────────────────────
 function b_filter:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 
 	if dddd == nil then
 		self:bhack_error("dddd not found")
@@ -28,7 +28,7 @@ function b_filter:in_1_dddd(atoms)
 
 	local filtered_var = t[self.filter_name]
 	if filtered_var ~= nil then
-		local ddddnew = bhack.dddd:new_fromtable(self, filtered_var)
+		local ddddnew = bhack.dddd:new_from_table(self, filtered_var)
 		ddddnew:output(1)
 	end
 end

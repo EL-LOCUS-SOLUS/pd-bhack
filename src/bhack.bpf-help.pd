@@ -1,5 +1,5 @@
 #N canvas 0 0 925 1132 10;
-#X declare -lib else;
+#X declare -lib xlab;
 #X text 110 24 Plot dddd;
 #X obj 4 323 bhack.bpf;
 #X obj 4 77 bhack.arithmser 1 1000 1;
@@ -16,7 +16,7 @@
 #X obj 407 141 loadbang;
 #X msg 407 167 10;
 #X msg 136 292 reload;
-#X obj 302 47 declare -lib else;
+#X obj 302 47 declare -lib xlab;
 #X connect 2 0 3 0;
 #X connect 3 0 11 0;
 #X connect 3 1 5 0;

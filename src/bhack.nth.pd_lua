@@ -18,13 +18,13 @@ end
 -- ─────────────────────────────────────
 function b_nth:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	if dddd == nil then
 		self:bhack_error("dddd not found")
 		return
 	end
 
-	local nth_dddd = bhack.dddd:new_fromtable(self, dddd:get_table()[self.nth])
+	local nth_dddd = bhack.dddd:new_from_table(self, dddd:get_table()[self.nth])
 	if nth_dddd == nil then
 		self:bhack_error("nth dddd not found")
 		return

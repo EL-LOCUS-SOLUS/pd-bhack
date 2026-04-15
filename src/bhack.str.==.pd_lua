@@ -23,7 +23,7 @@ end
 -- ─────────────────────────────────────
 function b_subst:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	local str = dddd:get_table()
 	if dddd:get_depth(str) ~= 0 then
 		self:error("[bhack.str.==] This object do not accepts lists")

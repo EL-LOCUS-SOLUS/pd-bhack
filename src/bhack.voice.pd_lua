@@ -96,7 +96,7 @@ function b_voice:midiout()
 		end
 	else
 		if self.entry then
-			local ddddnew = bhack.dddd:new_fromtable(self, self.entry.chord)
+			local ddddnew = bhack.dddd:new_from_table(self, self.entry.chord)
 			ddddnew:output(1)
 		end
 	end
@@ -393,7 +393,7 @@ end
 -- ─────────────────────────────────────
 function b_voice:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	if dddd == nil then
 		self:error("dddd not found")
 		return
@@ -475,7 +475,7 @@ end
 -- ─────────────────────────────────────
 function b_voice:in_2_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 	if dddd == nil then
 		self:bhack_error("dddd not found")
 		return
@@ -499,10 +499,10 @@ end
 function b_voice:in_1_midiplayback(atoms)
 	if atoms[1] > 0 then
 		self.midiplayback = true
-		self:logpost(2, "[bhack.voice] midiplayback on")
+		pd.post("[bhack.voice] midiplayback on")
 	else
 		self.midiplayback = false
-		self:logpost(2, "[bhack.voice] midiplayback off")
+		pd.post("[bhack.voice] midiplayback off")
 	end
 end
 

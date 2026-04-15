@@ -12,7 +12,7 @@ end
 -- ─────────────────────────────────────
 function b_depth:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 
 	local t = dddd:get_table()
 	local depth = bhack.utils.table_depth(t)

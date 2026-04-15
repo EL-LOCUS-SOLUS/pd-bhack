@@ -22,19 +22,19 @@ function m2n_dddd:in_1_list(atoms)
 	for k, v in ipairs(atoms) do
 		converted[k] = self:convert(v)
 	end
-	bhack.dddd:new_fromtable(self, converted):output(1)
+	bhack.dddd:new_from_table(self, converted):output(1)
 end
 
 -- ─────────────────────────────────────
 function m2n_dddd:in_1_float(atoms)
 	local nn = self:convert(atoms)
-	bhack.dddd:new_fromtable(self, nn):output(1)
+	bhack.dddd:new_from_table(self, nn):output(1)
 end
 
 -- ─────────────────────────────────────
 function m2n_dddd:in_1_dddd(atoms)
 	local id = atoms[1]
-	local dddd = bhack.dddd:new_fromid(self, id)
+	local dddd = bhack.dddd:new_from_id(self, id)
 
 	if not dddd then
 		self:bhack_error("dddd not found")
@@ -54,7 +54,7 @@ function m2n_dddd:in_1_dddd(atoms)
 		out = t
 	end
 
-	bhack.dddd:new_fromtable(self, out):output(1)
+	bhack.dddd:new_from_table(self, out):output(1)
 end
 
 -- ─────────────────────────────────────

@@ -72,7 +72,7 @@ local function normalize_single_measure_span_tree(time_sig, tree)
 
 	local numerator = (time_sig and tonumber(time_sig[1])) or 0
 	local denominator = (time_sig and tonumber(time_sig[2])) or 0
-	if numerator <= 0 or denominator ~= 4 then
+	if numerator <= 0 or denominator <= 0 then
 		return tree
 	end
 
@@ -85,7 +85,7 @@ local function normalize_single_measure_span_tree(time_sig, tree)
 		return tree
 	end
 
-	if numerator <= 4 then
+	if numerator <= 4 or (numerator % 2) == 0 then
 		return { (first < 0) and (-numerator) or numerator }
 	end
 
@@ -274,6 +274,14 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 			local tuplet_sum = rhythm.rhythm_sum(child_rhythms)
 			local total_figure_tuplet = parent_min_figure / up_value
 			local tuplet_min_figure = (total_figure_tuplet * utils.floor_pow2(tuplet_sum))
+
+			local is_top_measure_tuplet =
+				(parent_tuplet == nil)
+				and self.is_measure_tuplet
+				and (tonumber(self.time_sig and self.time_sig[1]) == tonumber(up_value))
+			if is_top_measure_tuplet then
+				tuplet_min_figure = parent_min_figure
+			end
 
 			local tuple_obj = rhythm.Tuplet:new(up_value, child_rhythms, {
 				parent = parent_tuplet,
