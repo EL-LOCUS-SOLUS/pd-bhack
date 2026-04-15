@@ -699,6 +699,9 @@ function b_voice:paint_layer_2(g)
 
 				self.current_measure = target_measure
 				self.Score:set_current_measure_position(self.current_measure)
+				-- Refresh the render window immediately after changing start measure.
+				-- get_onsets depends on chords_rest_positions from the latest SVG pass.
+				self.svg = self.Score:getsvg()
 				self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
 					self.Score:get_onsets(target_local_tick)
 				local best_entry = nil

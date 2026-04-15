@@ -145,10 +145,14 @@ local function beam_figure_for_chord(chord)
 
 	local figure = tonumber(chord.figure)
 	local raw_figure = tonumber(chord.raw_figure)
+	local base_figure = nil
+	if tonumber(chord.min_figure) and tonumber(chord.value) and tonumber(chord.value) > 0 then
+		base_figure = tonumber(chord.min_figure) / tonumber(chord.value)
+	end
 
 	if figure and figure > 0 then
 		-- Keep floor-based behavior; only lift values close to the eighth boundary.
-		if figure < 8 and raw_figure and raw_figure >= 6 and raw_figure < 8 then
+		if figure < 8 and raw_figure and raw_figure >= 6 and raw_figure < 8 and (not base_figure or base_figure > 4) then
 			return 8
 		end
 		return figure
@@ -547,9 +551,9 @@ function Tuplet:new(up_value, rhythms, parent_context)
 				obj.require_draw = true
 			end
 
-			if not obj.require_draw and parent_context.depth > 1 then
-				local nested_is_tuplet = compute_tuplet_label(up_value, obj.tuplet_sum, parent_context.measure)
-				if nested_is_tuplet then
+			if not obj.require_draw then
+				local irregular_is_tuplet = compute_tuplet_label(up_value, obj.tuplet_sum, parent_context.measure)
+				if irregular_is_tuplet then
 					obj.require_draw = true
 				end
 			end
