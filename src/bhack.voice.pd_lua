@@ -262,7 +262,7 @@ local function build_measure_start_offsets_ms(ctx)
 	for i, m in ipairs(measures) do
 		starts[i] = cursor
 		for _, entry in ipairs(m.entries or {}) do
-			local duration = (entry and entry.duration) or 0
+			local duration = (entry and (entry.duration_whole or entry.duration)) or 0
 			cursor = cursor + (duration * ms_per_whole)
 		end
 	end
@@ -521,6 +521,12 @@ function b_voice:in_1_export(atoms)
 	score[#score + 1] = table.concat({ "BPM", bpm }, " ")
 	score[#score + 1] = "\n"
 
+	score[#score + 1] = table.concat({ "ONNXMODEL", '"flute.onnx"' }, " ")
+	score[#score + 1] = "\n"
+
+	score[#score + 1] = table.concat({ "ONNXDESCRIPTORS", "mfcc logmel zcr centroid flatness hfr" }, " ")
+	score[#score + 1] = "\n"
+
 	local current_measure = 0
 	for _, v in pairs(chords) do
 		local tokens = {}
@@ -546,10 +552,24 @@ function b_voice:in_1_export(atoms)
 					tokens[2] = chord.notes[1].raw
 					tokens[3] = oscofo_value
 				else
-					tokens[1] = "NOTE"
-					tokens[2] = chord.notes[1].raw
-					tokens[3] = oscofo_value
-					tokens[4] = "@percussive"
+					tokens[1] = "PTECH"
+					if
+						notehead == "noteheadTriangleUpBlack"
+						or notehead == "noteheadTriangleUpHalf"
+						or notehead == "noteheadTriangleUpWhole"
+					then
+						tokens[2] = "tongue-ran"
+					elseif
+						notehead == "noteheadXBlack"
+						or notehead == "noteheadXHalf"
+						or notehead == "noteheadXWhole"
+					then
+						tokens[2] = "key-click"
+					else
+						error("Not identify")
+					end
+					tokens[3] = chord.notes[1].raw
+					tokens[4] = oscofo_value
 				end
 			else
 				tokens[1] = "CHORD"
@@ -569,7 +589,7 @@ function b_voice:in_1_export(atoms)
 	end
 
 	local score_string = table.concat(score)
-	local dir = self:get_canvas_dir()
+	local dir = pd._canvaspath(self._object)
 	local fullpath = dir .. "/" .. path
 
 	local file, err = io.open(fullpath, "w")
@@ -582,7 +602,7 @@ function b_voice:in_1_export(atoms)
 end
 
 -- ─────────────────────────────────────
-function b_voice:in_1_outsvg(atoms)
+function b_voice:in_1_outsvg(_)
 	local dddd = bhack.dddd:new(self, self.svg)
 	dddd:output(1)
 end

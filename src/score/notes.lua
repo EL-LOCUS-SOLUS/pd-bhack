@@ -156,6 +156,7 @@ local function build_chord_notes(chord, notes)
 		local resolved = resolve_notehead_glyph(explicit_notehead, figure_suffix) or default_glyph
 		local pitch = note_spec.pitch or note_spec.raw or note_spec.note or note_spec[1] or entry
 		local note_obj = Note:new(pitch, {
+			duration_whole = chord.duration_whole,
 			duration = chord.duration,
 			figure = chord.figure,
 			value = chord.value,
@@ -202,9 +203,14 @@ function Chord:new(name, notes, entry_info)
 	obj.tree = entry_info.tree
 
 	if entry_info then
+		local duration_whole = entry_info.duration_whole
+		if duration_whole == nil then
+			duration_whole = entry_info.duration
+		end
 		obj.figure = entry_info.figure
 		obj.raw_figure = entry_info.raw_figure
-		obj.duration = entry_info.duration
+		obj.duration_whole = duration_whole
+		obj.duration = entry_info.duration_ms or 0
 		obj.index = entry_info.index
 		obj.measure_index = entry_info.measure_index
 		obj.dot_level = entry_info.dot_level or 0
@@ -280,6 +286,7 @@ function Chord:populate_notes(notes_or_spec)
 		local resolved = resolve_notehead_glyph(name_or_glyph, figure_suffix) or default_glyph
 		local pitch = note_spec.pitch or note_spec.raw or note_spec.note or note_spec[1] or entry
 		local note_obj = Note:new(pitch, {
+			duration_whole = self.duration_whole,
 			duration = self.duration,
 			figure = self.figure,
 			value = self.value,
@@ -309,6 +316,7 @@ function Rest:new(entry_info)
 	obj.time_sig = entry_info.time_sig
 
 	if entry_info then
+		obj.duration_whole = entry_info.duration_whole or entry_info.duration
 		obj.duration = entry_info.duration
 		obj.raw_figure = entry_info.raw_figure
 		obj.figure = entry_info.figure

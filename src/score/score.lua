@@ -13,6 +13,46 @@ Score.__index = Score
 M.Score = Score
 
 -- ─────────────────────────────────────
+local function entry_duration_whole(entry)
+	if not entry then
+		return 0
+	end
+	local duration_whole = tonumber(entry.duration_whole)
+	if duration_whole then
+		return duration_whole
+	end
+	return tonumber(entry.duration) or 0
+end
+
+-- ─────────────────────────────────────
+local function refresh_chord_note_duration_ms(ctx)
+	if not ctx then
+		return
+	end
+
+	local bpm = tonumber(ctx.bpm)
+	if not bpm or bpm <= 0 then
+		return
+	end
+
+	local ms_per_whole = (60000 / bpm) * 4
+	for _, m in ipairs(ctx.measures or {}) do
+		for _, entry in ipairs(m.entries or {}) do
+			local duration_whole = entry_duration_whole(entry)
+			entry.duration_whole = duration_whole
+			if not entry.is_rest then
+				local duration_ms = duration_whole * ms_per_whole
+				entry.duration = duration_ms
+				for _, note in ipairs(entry.notes or {}) do
+					note.duration_whole = duration_whole
+					note.duration = duration_ms
+				end
+			end
+		end
+	end
+end
+
+-- ─────────────────────────────────────
 function Score:new(w, h)
 	local obj = setmetatable({}, self)
 	if not w and not h then
@@ -38,6 +78,7 @@ end
 -- ─────────────────────────────────────
 function Score:set_ctx(ctx)
 	self.ctx = ctx
+	refresh_chord_note_duration_ms(self.ctx)
 end
 
 -- ─────────────────────────────────────
@@ -126,6 +167,7 @@ function Score:set_material(material)
 		time_unity = 4,
 		render_tree = self.render_tree,
 	}
+	refresh_chord_note_duration_ms(self.ctx)
 	if not material.draw then
 		return
 	end
@@ -204,6 +246,7 @@ end
 -- ─────────────────────────────────────
 function Score:set_bpm(bpm)
 	self.ctx.bpm = bpm
+	refresh_chord_note_duration_ms(self.ctx)
 end
 
 -- ─────────────────────────────────────
@@ -229,6 +272,7 @@ function Score:get_onsets(playbar_position)
 
 	local entry_onsets = {}
 	local entry_durations = {}
+	local entry_duration_wholes = {}
 	local cursor_ms = 0
 	local current_measure = nil
 	local current_measure_offset_ms = nil
@@ -240,10 +284,11 @@ function Score:get_onsets(playbar_position)
 			last_measure = i
 			last_measure_start_ms = measure_start_ms
 			for _, entry in ipairs(m.entries or {}) do
-				local duration = entry and entry.duration or 0
-				local duration_ms = duration * ms_per_whole
+				local duration_whole = entry_duration_whole(entry)
+				local duration_ms = duration_whole * ms_per_whole
 				entry_onsets[#entry_onsets + 1] = cursor_ms
 				entry_durations[#entry_durations + 1] = duration_ms
+				entry_duration_wholes[#entry_duration_wholes + 1] = duration_whole
 				if not current_measure and target_ms >= cursor_ms and target_ms < (cursor_ms + duration_ms) then
 					current_measure = i
 					current_measure_offset_ms = target_ms - measure_start_ms
@@ -271,10 +316,20 @@ function Score:get_onsets(playbar_position)
 	local last_onset = 0
 	for i = 1, total do
 		local attack = entry_onsets[i]
-		local entry = bounds[i]
-		entry.duration = entry_durations[i]
-		if attack and entry then
-			indexed[math.floor(attack)] = entry
+		local slot = bounds[i]
+		local duration_ms = entry_durations[i]
+		local duration_whole = entry_duration_wholes[i]
+		slot.duration = duration_ms
+		if slot and slot.chord and not slot.chord.is_rest then
+			slot.chord.duration_whole = duration_whole
+			slot.chord.duration = duration_ms
+			for _, note in ipairs(slot.chord.notes or {}) do
+				note.duration_whole = duration_whole
+				note.duration = duration_ms
+			end
+		end
+		if attack and slot then
+			indexed[math.floor(attack)] = slot
 			if last_onset < attack then
 				last_onset = math.floor(attack)
 			end
@@ -300,11 +355,20 @@ function Score:get_all_chords()
 
 	for _, m in ipairs(measures) do
 		for _, entry in ipairs(m.entries or {}) do
-			local chord = bounds[index]
-			if chord then
-				local duration = entry and entry.duration or 0
-				chord.duration = duration * ms_per_whole
-				chords[#chords + 1] = chord
+			local slot = bounds[index]
+			if slot then
+				local duration_whole = entry_duration_whole(entry)
+				local duration_ms = duration_whole * ms_per_whole
+				slot.duration = duration_ms
+				if slot.chord and not slot.chord.is_rest then
+					slot.chord.duration_whole = duration_whole
+					slot.chord.duration = duration_ms
+					for _, note in ipairs(slot.chord.notes or {}) do
+						note.duration_whole = duration_whole
+						note.duration = duration_ms
+					end
+				end
+				chords[#chords + 1] = slot
 			end
 			index = index + 1
 		end

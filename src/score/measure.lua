@@ -220,6 +220,7 @@ function Measure:append_value_entry(
 	local notehead, dot_level = rhythm.figure_to_notehead(value, min_figure)
 	local entry_meta = {
 		time_sig = self.time_sig,
+		duration_whole = duration_whole,
 		duration = duration_whole,
 		figure = figure,
 		raw_figure = raw_figure,

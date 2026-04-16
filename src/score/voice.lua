@@ -74,6 +74,44 @@ local function instantiate_chord_blueprint(blueprint, entry_info, target)
 end
 
 -- ─────────────────────────────────────
+local function entry_duration_whole_value(entry)
+	if not entry then
+		return 0
+	end
+	local duration_whole = tonumber(entry.duration_whole)
+	if duration_whole then
+		return duration_whole
+	end
+	return tonumber(entry.duration) or 0
+end
+
+-- ─────────────────────────────────────
+local function apply_duration_ms_to_chords_and_notes(voice_obj)
+	if not voice_obj then
+		return
+	end
+
+	local bpm = tonumber(voice_obj.material and voice_obj.material.bpm) or 120
+	if bpm <= 0 then
+		bpm = 120
+	end
+	local ms_per_whole = (60000 / bpm) * 4
+
+	for _, element in ipairs(voice_obj.chords or {}) do
+		local duration_whole = entry_duration_whole_value(element)
+		element.duration_whole = duration_whole
+		if not element.is_rest then
+			local duration_ms = duration_whole * ms_per_whole
+			element.duration = duration_ms
+			for _, note in ipairs(element.notes or {}) do
+				note.duration_whole = duration_whole
+				note.duration = duration_ms
+			end
+		end
+	end
+end
+
+-- ─────────────────────────────────────
 local function assign_tuplet_directions(chords, tuplets, clef_key)
 	utils.log("assign_tuplet_directions", 2)
 	local lookup = {}
@@ -250,8 +288,9 @@ function Voice:new(material)
 		for entry_index, element in ipairs(m.entries or {}) do
 			element.measure_index = element.measure_index or measure_index
 			element.index = element.index or entry_index
+			element.duration_whole = element.duration_whole or element.duration
 			element.spacing_multiplier = element.spacing_multiplier
-				or rhythm.figure_spacing_multiplier(element.duration)
+				or rhythm.figure_spacing_multiplier(element.duration_whole)
 			obj.chords[#obj.chords + 1] = element
 
 			local tie_blueprint = pending_tie_blueprint
@@ -285,6 +324,8 @@ function Voice:new(material)
 			end
 		end
 	end
+
+	apply_duration_ms_to_chords_and_notes(obj)
 
 	return obj
 end
