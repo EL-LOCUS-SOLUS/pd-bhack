@@ -300,6 +300,90 @@ local function local_tick_from_absolute(ctx, start_measure, absolute_tick)
 	return absolute - measure_start
 end
 
+-- ─────────────────────────────────────
+local function resolve_export_path(obj, path)
+	if type(path) ~= "string" then
+		return nil
+	end
+	if path:match("^/") or path:match("^%a:[/\\]") then
+		return path
+	end
+	local dir = nil
+	if obj.get_canvas_dir then
+		dir = obj:get_canvas_dir()
+	end
+	if not dir or dir == "" then
+		dir = pd._canvaspath(obj._object)
+	end
+	if not dir or dir == "" then
+		return path
+	end
+	return dir .. "/" .. path
+end
+
+-- ─────────────────────────────────────
+local function write_string_to_file(path, content)
+	local file, err = io.open(path, "w")
+	if not file then
+		error("Failed to open file: " .. tostring(err))
+	end
+
+	local ok, write_err = file:write(content)
+	file:close()
+	if not ok then
+		error("Failed to write file: " .. tostring(write_err))
+	end
+end
+
+-- ─────────────────────────────────────
+local function build_full_score_svg(obj)
+	if not obj.Score or not obj.Score.ctx then
+		error("Score is not initialized")
+	end
+
+	local score = obj.Score
+	local ctx = score.ctx
+	local original_measure_position = score.current_measure_position or (ctx.current_measure_position or 1)
+	local original_width = ctx.width
+	local original_staff_width = ctx.staff and ctx.staff.width
+	local original_svg = obj.svg
+
+	local ok, result = pcall(function()
+		score:set_current_measure_position(1)
+		score:getsvg()
+
+		local max_end_x = get_max_measure_end_x(ctx)
+		if type(max_end_x) ~= "number" then
+			max_end_x = original_width or 0
+		end
+
+		local right_padding = (ctx.staff and ctx.staff.padding) or 0
+		local extra_margin = (ctx.staff and ctx.staff.spacing) or 0
+		local desired_width = math.max(original_width or 0, max_end_x + right_padding + extra_margin)
+		ctx.width = desired_width
+		if ctx.staff then
+			local staff_left = ctx.staff.left or 0
+			ctx.staff.width = math.max(0, desired_width - staff_left - 2)
+		end
+
+		return score:getsvg()
+	end)
+
+	ctx.width = original_width
+	if ctx.staff then
+		ctx.staff.width = original_staff_width
+	end
+	score:set_current_measure_position(original_measure_position)
+	score:getsvg()
+	obj.svg = original_svg
+
+	if not ok then
+		error(result)
+	end
+
+	return result
+end
+
 --╭─────────────────────────────────────╮
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
@@ -507,13 +591,8 @@ function b_voice:in_1_midiplayback(atoms)
 end
 
 -- ─────────────────────────────────────
-function b_voice:in_1_export(atoms)
-	local path = atoms[1]
-	local ext = path:match("^.+%.([^%.]+)$")
-	if ext ~= "txt" then
-		error("[bhack.voice] Extension " .. tostring(ext) .. " not supported, use .txt")
-	end
-
+function b_voice:export_txt(path)
+	local fullpath = resolve_export_path(self, path)
 	local chords = self.Score:get_all_chords()
 
 	local score = {}
@@ -574,8 +653,8 @@ function b_voice:in_1_export(atoms)
 			else
 				tokens[1] = "CHORD"
 				local pitches = { "(" }
-				for k, _ in pairs(chord.notes) do
-					pitches[#pitches + 1] = k.raw
+					for _, note in pairs(chord.notes) do
+						pitches[#pitches + 1] = note.raw
 				end
 				pitches[#pitches + 1] = ")"
 
@@ -589,16 +668,45 @@ function b_voice:in_1_export(atoms)
 	end
 
 	local score_string = table.concat(score)
-	local dir = pd._canvaspath(self._object)
-	local fullpath = dir .. "/" .. path
+	write_string_to_file(fullpath, score_string)
+end
 
-	local file, err = io.open(fullpath, "w")
-	if not file then
-		error("Failed to open file: " .. err)
+-- ─────────────────────────────────────
+function b_voice:export_musicxml(path)
+	local fullpath = resolve_export_path(self, path)
+	self.Score:export_voice_musicxml(fullpath)
+end
+
+-- ─────────────────────────────────────
+function b_voice:export_svg(path)
+	local fullpath = resolve_export_path(self, path)
+	local full_svg = build_full_score_svg(self)
+	write_string_to_file(fullpath, full_svg)
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_1_export(atoms)
+	local path = atoms and atoms[1]
+	if type(path) ~= "string" or path == "" then
+		error("[bhack.voice] Invalid export path")
 	end
 
-	file:write(score_string)
-	file:close()
+	local ext = path:match("^.+%.([^%.]+)$")
+	ext = ext and ext:lower() or nil
+	if ext == "txt" then
+		self:export_txt(path)
+		return
+	end
+	if ext == "xml" or ext == "musicxml" then
+		self:export_musicxml(path)
+		return
+	end
+	if ext == "svg" then
+		self:export_svg(path)
+		return
+	end
+
+	error("[bhack.voice] Extension " .. tostring(ext) .. " not supported, use .txt, .xml or .svg")
 end
 
 -- ─────────────────────────────────────

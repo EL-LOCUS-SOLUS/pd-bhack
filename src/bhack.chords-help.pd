@@ -20,6 +20,7 @@
 #X obj 222 346 declare -lib xlab;
 #X obj 17 253 bhack.define;
 #X obj 17 387 bhack.chords;
+#X msg 140 239 list [C4];
 #X connect 1 0 17 0;
 #X connect 2 0 18 0;
 #X connect 3 0 17 0;
@@ -32,3 +33,4 @@
 #X connect 14 0 17 0;
 #X connect 15 0 17 0;
 #X connect 17 0 18 0;
+#X connect 19 0 17 0;
