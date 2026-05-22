@@ -270,6 +270,69 @@ local function build_measure_start_offsets_ms(ctx)
 end
 
 -- ─────────────────────────────────────
+local function entry_duration_whole_value(entry)
+	if not entry then
+		return 0
+	end
+	local duration_whole = tonumber(entry.duration_whole)
+	if duration_whole then
+		return duration_whole
+	end
+	return tonumber(entry.duration) or 0
+end
+
+-- ─────────────────────────────────────
+local function is_countable_entry(entry, prev_entry)
+	if not entry then
+		return false
+	end
+	if entry.is_rest then
+		return false
+	end
+	if prev_entry and prev_entry.is_tied then
+		return false
+	end
+	return true
+end
+
+-- ─────────────────────────────────────
+local function find_entry_by_index(ctx, index)
+	if not ctx then
+		return nil
+	end
+	local measures = ctx.measures or {}
+	local bpm = tonumber(ctx.bpm)
+	if not bpm or bpm <= 0 then
+		return nil
+	end
+	local ms_per_whole = (60000 / bpm) * 4
+	local cursor = 0
+	local entry_index = 0
+	local prev_entry = nil
+	for i, m in ipairs(measures) do
+		local measure_start = cursor
+		for _, entry in ipairs(m.entries or {}) do
+			if is_countable_entry(entry, prev_entry) then
+				entry_index = entry_index + 1
+				if entry_index == index then
+					local offset_ms = cursor - measure_start
+					return {
+						measure_index = i,
+						measure_offset_ms = offset_ms,
+						absolute_ms = cursor,
+					},
+						entry_index
+				end
+			end
+			local duration_whole = entry_duration_whole_value(entry)
+			cursor = cursor + (duration_whole * ms_per_whole)
+			prev_entry = entry
+		end
+	end
+	return nil, entry_index
+end
+
+-- ─────────────────────────────────────
 local function absolute_tick_from_measure_offset(ctx, measure_index, offset_ms)
 	local starts = build_measure_start_offsets_ms(ctx)
 	if not starts then
@@ -541,6 +604,47 @@ function b_voice:in_1_dddd(atoms)
 end
 
 -- ─────────────────────────────────────
+function b_voice:in_1_playbarpos(args)
+	local index = tonumber(args and args[1])
+	if not index or index < 1 then
+		self:error("[bhack.voice] playbarpos expects a 1-based index")
+		return
+	end
+	local ctx = self.Score and self.Score.ctx
+	if not ctx then
+		self:error("[bhack.voice] Score not initialized")
+		return
+	end
+
+	local info, total = find_entry_by_index(ctx, index)
+	if not info then
+		self:error("[bhack.voice] playbarpos index out of range (1-" .. tostring(total) .. ")")
+		return
+	end
+
+	self.current_measure = info.measure_index
+	self.Score:set_current_measure_position(self.current_measure)
+
+	local target_tick = math.max(0, math.floor(info.measure_offset_ms))
+	if self.is_playing then
+		self.playbar_position = target_tick - 1
+	else
+		self.playbar_position = target_tick
+	end
+
+	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
+		self.Score:get_onsets(math.max(0, target_tick))
+	self.last_onset = self.last_onset or 0
+	self.entry = self.onsets[target_tick]
+	self.last_valid_position = (self.entry and self.entry.left) or self.last_valid_position or 0
+	self.last_draw_position = self.last_valid_position
+	self.previous_entry = nil
+	self.svg = self.Score:getsvg()
+	self:repaint()
+	self:repaint(2)
+end
+
+-- ─────────────────────────────────────
 function b_voice:in_1_play()
 	if self.is_playing then
 		self.last_onset = -1
@@ -548,10 +652,15 @@ function b_voice:in_1_play()
 		return
 	end
 
+	local start_tick = tonumber(self.playbar_position) or 0
+	if start_tick < 0 then
+		start_tick = 0
+	end
+
 	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
-		self.Score:get_onsets(self.playbar_position)
-	self.last_onset = -1
-	self.playbar_position = -1
+		self.Score:get_onsets(start_tick)
+	self.last_onset = start_tick - 1
+	self.playbar_position = start_tick - 1
 	self.playclock:delay(1)
 	self.is_playing = true
 end
@@ -630,6 +739,14 @@ function b_voice:export_txt(path)
 					tokens[1] = "NOTE"
 					tokens[2] = chord.notes[1].raw
 					tokens[3] = oscofo_value
+				elseif
+					notehead == "noteheadPlusBlack"
+					or notehead == "noteheadPlusHalf"
+					or notehead == "noteheadPlusWhole"
+				then
+					tokens[1] = "UTECH"
+					tokens[2] = "jet_whistle"
+					tokens[3] = oscofo_value
 				else
 					tokens[1] = "PTECH"
 					if
@@ -637,13 +754,13 @@ function b_voice:export_txt(path)
 						or notehead == "noteheadTriangleUpHalf"
 						or notehead == "noteheadTriangleUpWhole"
 					then
-						tokens[2] = "tongue-ran"
+						tokens[2] = "tongue_ram"
 					elseif
 						notehead == "noteheadXBlack"
 						or notehead == "noteheadXHalf"
 						or notehead == "noteheadXWhole"
 					then
-						tokens[2] = "key-click"
+						tokens[2] = "key_click"
 					else
 						error("Not identify")
 					end
@@ -653,8 +770,8 @@ function b_voice:export_txt(path)
 			else
 				tokens[1] = "CHORD"
 				local pitches = { "(" }
-					for _, note in pairs(chord.notes) do
-						pitches[#pitches + 1] = note.raw
+				for _, note in pairs(chord.notes) do
+					pitches[#pitches + 1] = note.raw
 				end
 				pitches[#pitches + 1] = ")"
 
@@ -779,84 +896,89 @@ function b_voice:paint_layer_2(g)
 		end
 		p:close()
 		g:fill_path(p)
-
-		-- barra que indica a posição atual
-		g:set_color(180, 75, 75)
-		local pos = self.last_valid_position
-		local max_pos = math.max(0, self.width - padding)
-		if pos > max_pos then
-			pos = max_pos
-		end
-		g:fill_rect(pos - 1, padding, 1, self.height - (padding * 2))
-
-		if pos > self.width * 0.9 then
-			local play_measure = self.current_play_measure or self.current_measure
-			local offset_ms = self.current_play_measure_offset or 0
-			local total_measures = (self.Score and self.Score.ctx and #(self.Score.ctx.measures or {})) or 0
-			local target_measure
-			if offset_ms > 0 then
-				target_measure = play_measure or 1
-			else
-				target_measure = (play_measure or 1) + 1
-			end
-			if total_measures > 0 and target_measure > total_measures then
-				target_measure = total_measures
-				if target_measure < 1 then
-					return
-				end
-				if play_measure and play_measure > target_measure then
-					play_measure = target_measure
-				end
-			end
-
-			local allow_update = target_measure > (self.current_measure or 1)
-			if allow_update then
-				self.last_advanced_from_measure = play_measure
-				self.last_advanced_from_offset = offset_ms
-
-				local absolute_tick =
-					absolute_tick_from_measure_offset(self.Score and self.Score.ctx, play_measure, offset_ms)
-				if absolute_tick == nil then
-					absolute_tick = math.max(0, tonumber(self.playbar_position) or 0)
-				end
-				local target_local_tick =
-					local_tick_from_absolute(self.Score and self.Score.ctx, target_measure, absolute_tick)
-				if target_local_tick < 0 then
-					target_local_tick = 0
-				end
-
-				self.current_measure = target_measure
-				self.Score:set_current_measure_position(self.current_measure)
-				-- Refresh the render window immediately after changing start measure.
-				-- get_onsets depends on chords_rest_positions from the latest SVG pass.
-				self.svg = self.Score:getsvg()
-				self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
-					self.Score:get_onsets(target_local_tick)
-				local best_entry = nil
-				local best_time = -1
-				for t, entry in pairs(self.onsets) do
-					if t <= target_local_tick and t > best_time then
-						best_time = t
-						best_entry = entry
-					end
-				end
-				if not best_entry then
-					best_entry = self.onsets[0]
-				end
-				self.playbar_position = math.max(0, math.floor(target_local_tick)) - 1
-				self.last_valid_position = (best_entry and best_entry.left) or self.last_valid_position or 0
-				self.last_draw_position = self.last_valid_position
-				self.entry = best_entry or self.entry
-				self.awaiting_render = true
-				self:repaint()
-			end
-		end
 	else
 		local rect_width = 1
 		local rect_height = 5
 		g:set_color(0, 0, 200)
 		g:fill_rect(padding, padding, rect_width, rect_height)
 		g:fill_rect(padding + rect_width + 2, padding, rect_width, rect_height)
+	end
+
+	-- barra que indica a posição atual
+	local pos = self.last_valid_position
+	if pos == nil and self.entry and self.entry.left then
+		pos = self.entry.left
+	end
+	if pos ~= nil then
+		g:set_color(180, 75, 75)
+		local max_pos = math.max(0, self.width - padding)
+		if pos > max_pos then
+			pos = max_pos
+		end
+		g:fill_rect(pos - 1, padding, 1, self.height - (padding * 2))
+	end
+
+	if self.is_playing and pos and pos > self.width * 0.9 then
+		local play_measure = self.current_play_measure or self.current_measure
+		local offset_ms = self.current_play_measure_offset or 0
+		local total_measures = (self.Score and self.Score.ctx and #(self.Score.ctx.measures or {})) or 0
+		local target_measure
+		if offset_ms > 0 then
+			target_measure = play_measure or 1
+		else
+			target_measure = (play_measure or 1) + 1
+		end
+		if total_measures > 0 and target_measure > total_measures then
+			target_measure = total_measures
+			if target_measure < 1 then
+				return
+			end
+			if play_measure and play_measure > target_measure then
+				play_measure = target_measure
+			end
+		end
+
+		local allow_update = target_measure > (self.current_measure or 1)
+		if allow_update then
+			self.last_advanced_from_measure = play_measure
+			self.last_advanced_from_offset = offset_ms
+
+			local absolute_tick =
+				absolute_tick_from_measure_offset(self.Score and self.Score.ctx, play_measure, offset_ms)
+			if absolute_tick == nil then
+				absolute_tick = math.max(0, tonumber(self.playbar_position) or 0)
+			end
+			local target_local_tick =
+				local_tick_from_absolute(self.Score and self.Score.ctx, target_measure, absolute_tick)
+			if target_local_tick < 0 then
+				target_local_tick = 0
+			end
+
+			self.current_measure = target_measure
+			self.Score:set_current_measure_position(self.current_measure)
+			-- Refresh the render window immediately after changing start measure.
+			-- get_onsets depends on chords_rest_positions from the latest SVG pass.
+			self.svg = self.Score:getsvg()
+			self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
+				self.Score:get_onsets(target_local_tick)
+			local best_entry = nil
+			local best_time = -1
+			for t, entry in pairs(self.onsets) do
+				if t <= target_local_tick and t > best_time then
+					best_time = t
+					best_entry = entry
+				end
+			end
+			if not best_entry then
+				best_entry = self.onsets[0]
+			end
+			self.playbar_position = math.max(0, math.floor(target_local_tick)) - 1
+			self.last_valid_position = (best_entry and best_entry.left) or self.last_valid_position or 0
+			self.last_draw_position = self.last_valid_position
+			self.entry = best_entry or self.entry
+			self.awaiting_render = true
+			self:repaint()
+		end
 	end
 end
 

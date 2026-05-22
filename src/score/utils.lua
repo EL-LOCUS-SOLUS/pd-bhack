@@ -4,6 +4,16 @@ local LOGLEVEL = 0 -- 0=none, 1=normal, 2=debug
 --╭─────────────────────────────────────╮
 --│                Music                │
 --╰─────────────────────────────────────╯
+local class_names_roots = {
+	C = 0,
+	D = 2,
+	E = 4,
+	F = 5,
+	G = 7,
+	A = 9,
+	B = 11,
+}
+
 local note_to_pc = {
 	C = 0,
 	D = 2,
@@ -14,21 +24,7 @@ local note_to_pc = {
 	B = 11,
 }
 
-local class_has_alteration = {
-	[0] = false,
-	[1] = true,
-	[2] = false,
-	[3] = true,
-	[4] = false,
-	[5] = false,
-	[6] = true,
-	[7] = false,
-	[8] = true,
-	[9] = false,
-	[10] = true,
-	[11] = false,
-}
-
+-- ─────────────────────────────────────
 local class_names = {
 	[0] = "C",
 	[1] = "C",
@@ -42,28 +38,6 @@ local class_names = {
 	[9] = "A",
 	[10] = "A",
 	[11] = "B",
-}
-
-local edo96_natural = {
-	[0] = "",
-	[0.125] = "^",
-	[0.25] = "^^",
-	[0.375] = "^^^",
-	[0.5] = "+",
-	[0.625] = "bvvv",
-	[0.75] = "bv",
-	[0.875] = "b",
-}
-
-local edo96_sharp = {
-	[0] = "#",
-	[0.125] = "#v",
-	[0.25] = "#vv",
-	[0.375] = "#vvv",
-	[0.5] = "#+",
-	[0.625] = "vvv",
-	[0.75] = "vv",
-	[0.875] = "v",
 }
 
 -- ─────────────────────────────────────
@@ -147,48 +121,53 @@ end
 -- ─────────────────────────────────────
 function M.m2n(midi, temperament)
 	temperament = temperament or "12edo"
-
-	-- round to nearest integer
-	local rounded = math.floor(midi + 0.5)
-	local class_int = rounded % 12
-	local alter_symbol = ""
-
-	-- sharps by default only for microtonal
-	if temperament == "24edo" or temperament == "96edo" then
-		if class_has_alteration[class_int] then
-			alter_symbol = alter_symbol .. "#"
-		end
-	end
-
-	-- 24edo: add quarter-tone
+	local steps = 12
 	if temperament == "24edo" then
-		local quarter = math.abs(midi - rounded)
-		if quarter > 0.25 and quarter < 0.75 then
-			alter_symbol = alter_symbol .. "+"
-		end
-
-	-- 96edo: full microtonal map
-	elseif temperament == "96edo" then
-		local base = rounded
-		local fraction = midi - base
-		local micro = math.floor(fraction * 8 + 0.5) / 8
-
-		-- adjust overflow
-		if micro == 1.0 then
-			base = base + 1
-			micro = 0
-		end
-
-		class_int = base % 12
-
-		local map = class_has_alteration[class_int] and edo96_sharp or edo96_natural
-		alter_symbol = map[micro] or ""
-		rounded = base
+		steps = 24
+	end
+	if temperament == "96edo" then
+		steps = 96
 	end
 
-	-- compute octave
-	local octave = math.floor(rounded / 12) - 1
-	return string.format("%s%s%d", class_names[class_int], alter_symbol, octave)
+	local step = math.floor(midi % 12)
+	local cents = (midi - math.floor(midi)) * 100
+	local octave = math.floor(midi / 12) - 1
+	local classname = class_names[step]
+	local classname_root = class_names_roots[classname]
+
+	local alter = ""
+	if steps == 12 then
+		alter = (step - classname_root == 1) and "#" or ""
+	elseif steps == 24 then
+		alter = (step - classname_root == 1) and "#" or ""
+		if cents > 25 and cents < 75 then
+			alter = alter .. "+"
+		end
+	elseif steps == 96 then
+		local classalter = (step - classname_root == 1) and "#" or ""
+		if cents < 12.5 then
+			alter = ""
+		elseif cents < 25 then
+			alter = "^"
+		elseif cents < 37.5 then
+			alter = "^^"
+		elseif cents < 50 then
+			alter = "^^^"
+		elseif cents < 62.5 then
+			alter = "+"
+		elseif cents < 75 then
+			alter = "v"
+		elseif cents < 87.5 then
+			alter = "vv"
+		else
+			alter = "vvv"
+		end
+		alter = classalter .. alter
+	else
+		error("Unrecognized temperament " .. temperament)
+	end
+
+	return string.format("%s%s%d", classname, alter, octave)
 end
 
 -- ─────────────────────────────────────

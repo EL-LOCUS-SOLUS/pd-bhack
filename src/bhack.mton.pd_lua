@@ -1,7 +1,7 @@
 local m2n_dddd = pd.Class:new():register("bhack.mton")
 local bhack = require("bhack")
 local m2n = require("bhack").utils.m2n
-local n2m = require("bhack").utils.n2m
+-- local n2m = require("bhack").utils.n2m
 
 -- ─────────────────────────────────────
 function m2n_dddd:initialize(_, args)
@@ -59,6 +59,16 @@ end
 
 -- ─────────────────────────────────────
 function m2n_dddd:in_1_reload()
+	package.loaded.bhack = nil
+	bhack = nil
+	for k, _ in pairs(package.loaded) do
+		pd.post(k)
+		package.loaded[k] = nil
+		if k == "score/score" or k == "score/utils" then
+			package.loaded[k] = nil
+		end
+	end
+
 	self:dofilex(self._scriptname)
 	self:initialize()
 end
