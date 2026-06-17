@@ -92,6 +92,114 @@ local function has_effective_explicit_notehead(name_or_glyph)
 end
 
 -- ─────────────────────────────────────
+local function normalize_forced_stem_direction(raw)
+	if type(raw) == "table" then
+		raw = raw[1]
+	end
+	if raw == nil then
+		return nil
+	end
+	if type(raw) == "number" then
+		if raw > 0 then
+			return "up"
+		elseif raw < 0 then
+			return "down"
+		end
+		return nil
+	end
+	if type(raw) ~= "string" then
+		raw = tostring(raw)
+	end
+	local token = trim_string(raw):lower()
+	if token == "up" or token == "u" or token == "1" then
+		return "up"
+	elseif token == "down" or token == "d" or token == "-1" then
+		return "down"
+	end
+	return nil
+end
+
+-- ─────────────────────────────────────
+local function normalize_stem_glyph(raw)
+	if type(raw) == "table" then
+		raw = raw[1]
+	end
+	if raw == nil then
+		return nil
+	end
+	if type(raw) == "number" then
+		raw = string.format("%x", raw)
+	elseif type(raw) ~= "string" then
+		raw = tostring(raw)
+	end
+	local token = trim_string(raw)
+	if token == nil then
+		return nil
+	end
+	local lower = token:lower()
+	if lower == "" or lower == "auto" or lower == "none" or lower == "n" then
+		return nil
+	end
+	if token:match("^stem") then
+		return token
+	end
+	local key = lower:gsub("^u%+", ""):gsub("^0x", ""):gsub("[^%w]", "")
+	return constants.STEM_GLYPHS[key]
+end
+
+-- ─────────────────────────────────────
+local function resolve_articulation_glyph(raw)
+	if raw == nil then
+		return nil
+	end
+	if type(raw) == "table" then
+		raw = raw[1]
+	end
+	if raw == nil then
+		return nil
+	end
+	if type(raw) ~= "string" then
+		raw = tostring(raw)
+	end
+	local s = trim_string(raw)
+	if not s or s == "" then
+		return nil
+	end
+	local lower = s:lower()
+	if lower == "none" or lower == "nil" or lower == "n" or lower == "ord" then
+		return nil
+	end
+	local codepoint = s:upper():match("^U%+([0-9A-F]+)$") or s:upper():match("^0X([0-9A-F]+)$")
+		or s:upper():match("^([0-9A-F]+)$")
+	if codepoint and constants.ARTICULATION_CODEPOINT_GLYPHS[codepoint] then
+		return constants.ARTICULATION_CODEPOINT_GLYPHS[codepoint]
+	end
+	if s:match("^artic") then
+		return s
+	end
+	local key = lower:gsub("[^%w]", "")
+	return constants.ARTICULATION_GLYPHS[key]
+end
+
+local function resolve_articulation_glyphs(raw)
+	local out, seen = {}, {}
+	if raw == nil then
+		return out
+	end
+	if type(raw) ~= "table" then
+		raw = { raw }
+	end
+	for _, entry in ipairs(raw) do
+		local glyph = resolve_articulation_glyph(entry)
+		if glyph and not seen[glyph] then
+			out[#out + 1] = glyph
+			seen[glyph] = true
+		end
+	end
+	return out
+end
+
+-- ─────────────────────────────────────
 local function normalize_dynamic_token(raw)
 	if raw == nil then
 		return ""
@@ -150,8 +258,10 @@ local function build_chord_notes(chord, notes)
 	utils.log("build_chord_notes", 2)
 	chord.notes = {}
 	local figure_suffix, default_glyph = chord_figure_notehead_suffix(chord)
+	local note_articulations = {}
 	for _, entry in ipairs(notes) do
 		local note_spec = internal_utils.clone_note_entry(entry)
+		note_articulations[#note_articulations + 1] = note_spec.articulation
 		local explicit_notehead = note_spec.notehead
 		local resolved = resolve_notehead_glyph(explicit_notehead, figure_suffix) or default_glyph
 		local pitch = note_spec.pitch or note_spec.raw or note_spec.note or note_spec[1] or entry
@@ -169,6 +279,8 @@ local function build_chord_notes(chord, notes)
 		})
 		table.insert(chord.notes, note_obj)
 	end
+	chord.articulations = (#(chord.articulations or {}) > 0) and chord.articulations
+		or resolve_articulation_glyphs(note_articulations)
 end
 
 -- ─────────────────────────────────────
@@ -197,6 +309,7 @@ function Chord:new(name, notes, entry_info)
 	obj.notes = {}
 	obj.dynamic = ""
 	obj.dynamic_glyph = nil
+	obj.articulations = {}
 	obj.stem = "stem"
 	obj.notehead = "noteheadBlack"
 	obj.time_sig = entry_info.time_sig
@@ -239,12 +352,19 @@ function Chord:populate_notes(notes_or_spec)
 	-- 2) spec: { notes = {...}, noteheads = {"X", "Plus", ...} }
 	local notes = notes_or_spec
 	local noteheads = nil
+	local articulations = nil
 	local incoming_dynamic = nil
 	if type(notes_or_spec) == "table" and type(notes_or_spec.notes) == "table" then
 		notes = notes_or_spec.notes
 		noteheads = notes_or_spec.noteheads
+		articulations = notes_or_spec.articulations
 		incoming_dynamic = notes_or_spec.dynamic or notes_or_spec.dynamics
+		self.stem = normalize_stem_glyph(notes_or_spec.stem) or self.stem
+		self.forced_stem_direction =
+			normalize_forced_stem_direction(notes_or_spec.forced_stem_direction or notes_or_spec.stem_direction)
 	end
+	local has_articulations = articulations ~= nil
+	self.articulations = resolve_articulation_glyphs(articulations)
 
 	local parsed_dynamic, parsed_glyph = resolve_dynamic_glyph(incoming_dynamic)
 	if parsed_dynamic ~= "" then
@@ -272,8 +392,10 @@ function Chord:populate_notes(notes_or_spec)
 		return self
 	end
 	local last_name_or_glyph = nil
+	local note_articulations = {}
 	for k, entry in ipairs(notes) do
 		local note_spec = internal_utils.clone_note_entry(entry)
+		note_articulations[#note_articulations + 1] = note_spec.articulation
 
 		-- Priority:
 		-- - per-note noteheads[k] from spec
@@ -299,6 +421,9 @@ function Chord:populate_notes(notes_or_spec)
 			chord = self,
 		})
 		table.insert(self.notes, note_obj)
+	end
+	if (not has_articulations) and #self.articulations == 0 then
+		self.articulations = resolve_articulation_glyphs(note_articulations)
 	end
 	return self
 end
@@ -338,5 +463,7 @@ return {
 	Chord = Chord,
 	normalize_dynamic_token = normalize_dynamic_token,
 	resolve_dynamic_glyph = resolve_dynamic_glyph,
+	resolve_articulation_glyph = resolve_articulation_glyph,
+	resolve_articulation_glyphs = resolve_articulation_glyphs,
 	reset_dynamic_carry = reset_dynamic_carry,
 }

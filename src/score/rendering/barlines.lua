@@ -37,9 +37,12 @@ local function handle_barlines(state)
 		if bchunk then
 			table.insert(state.barline_svg, "  " .. bchunk)
 		end
-		if bm and bm.width then
-			local bar_right = bx + (bm.width * 0.5)
-			state.current_x = math.max(state.current_x, bar_right + state.staff_spacing * 0.6)
+		if bm then
+			local bar_right = bx + (bm.max_x or ((bm.width or 0) * 0.5))
+			state.layout_right = math.max(state.layout_right or bar_right, bar_right)
+			if bm.width then
+				state.current_x = math.max(state.current_x, bar_right + state.staff_spacing * 0.6)
+			end
 		end
 		meta.measure_end_x = state.current_x
 	end

@@ -94,7 +94,9 @@ local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y
 	local center_y_units = (sw_y_units + ne_y_units) * 0.5
 
 	local translate_x_units
-	if align_x == "left" then
+	if options.origin_x_spaces then
+		translate_x_units = -(options.origin_x_spaces * units_per_space)
+	elseif align_x == "left" then
 		translate_x_units = -sw_x_units
 	elseif align_x == "right" then
 		translate_x_units = -ne_x_units
@@ -103,7 +105,9 @@ local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y
 	end
 
 	local translate_y_units
-	if align_y == "top" then
+	if options.origin_y_spaces then
+		translate_y_units = -(options.origin_y_spaces * units_per_space)
+	elseif align_y == "top" then
 		translate_y_units = -ne_y_units
 	elseif align_y == "bottom" then
 		translate_y_units = -sw_y_units

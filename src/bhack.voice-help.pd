@@ -1,8 +1,8 @@
 #N canvas 0 0 925 1132 10;
-#X declare -lib else;
+#X declare -lib elsse;
 #X declare -lib lua;
 #N canvas 0 0 925 1132 random 0;
-#X obj 528 380 declare -lib else;
+#X obj 528 380 declare -lib elsse;
 #X obj 29 119 bhack.define;
 #X msg 182 147 reload;
 #X obj 182 124 spigot;

@@ -30,26 +30,58 @@ end
 
 -- ─────────────────────────────────────
 local function apply_op(op, a, b)
+	-- Table vs Table
+	if type(a) == "table" and type(b) == "table" then
+		local result = {}
+		assert(#a == #b, string.format("Table size mismatch: %d ~= %d", #a, #b))
+		for i = 1, #a do
+			result[i] = apply_op(op, a[i], b[i])
+		end
+
+		return result
+	end
+
+	-- Table vs Scalar
+	if type(a) == "table" then
+		local result = {}
+
+		for i = 1, #a do
+			result[i] = apply_op(op, a[i], b)
+		end
+
+		return result
+	end
+
+	-- Scalar vs Table
+	if type(b) == "table" then
+		local result = {}
+
+		for i = 1, #b do
+			result[i] = apply_op(op, a, b[i])
+		end
+
+		return result
+	end
+
+	-- Scalar vs Scalar
 	if a == nil or b == nil then
 		error("Nil operand")
 	end
+
 	if op == "+" then
 		return a + b
-	end
-	if op == "-" then
+	elseif op == "-" then
 		return a - b
-	end
-	if op == "*" then
+	elseif op == "*" then
 		return a * b
-	end
-	if op == "/" then
+	elseif op == "/" then
 		if b == 0 then
 			return 0
 		end
 		return a / b
 	end
+
 	error("Invalid operator: " .. tostring(op))
-	return nil
 end
 
 -- ─────────────────────────────────────
@@ -124,7 +156,7 @@ end
 
 -- ─────────────────────────────────────
 function b_op:in_2_float(f)
-	local dddd = bhack.dddd:new(self, { f })
+	local dddd = bhack.dddd:new(self, f)
 	self.dddd2 = dddd
 end
 

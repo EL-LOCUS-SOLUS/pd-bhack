@@ -27,6 +27,7 @@ local function chord_to_blueprint(chord)
 	end
 	local blueprint = { name = chord.name, notes = {} }
 	blueprint.dynamic = chord.dynamic
+	blueprint.articulations = chord.articulations
 	for _, note in ipairs(chord.notes or {}) do
 		local notehead_name = nil
 		if note.has_explicit_notehead then
@@ -57,19 +58,25 @@ local function instantiate_chord_blueprint(blueprint, entry_info, target)
 		}
 		note_specs[#note_specs + 1] = spec
 	end
+	local chord_spec = {
+		notes = note_specs,
+		articulations = blueprint.articulations,
+		dynamic = blueprint.dynamic,
+	}
 
 	if target then
 		target.name = blueprint.name or target.name or ""
 		target.dynamic = notes.normalize_dynamic_token(blueprint.dynamic)
 		local _, dynamic_glyph = notes.resolve_dynamic_glyph(blueprint.dynamic)
 		target.dynamic_glyph = dynamic_glyph
-		target:populate_notes(note_specs)
+		target:populate_notes(chord_spec)
 		return target
 	end
-	local chord = notes.Chord:new(blueprint.name, note_specs, entry_info)
+	local chord = notes.Chord:new(blueprint.name, nil, entry_info)
 	chord.dynamic = notes.normalize_dynamic_token(blueprint.dynamic)
 	local _, dynamic_glyph = notes.resolve_dynamic_glyph(blueprint.dynamic)
 	chord.dynamic_glyph = dynamic_glyph
+	chord:populate_notes(chord_spec)
 	return chord
 end
 

@@ -1,0 +1,13 @@
+#N canvas 0 0 925 1132 10;
+#X declare -lib xlab;
+#X obj 3 4 declare -lib xlab;
+#X obj 7 115 bhack.chords;
+#X obj 7 91 bhack.define;
+#X msg 7 66 list C4 C^4 C^^4 C^^^4 C+4 Cvvv4 Cvv4 Cv4 C#4;
+#X obj 7 270 bhack.chords;
+#X obj 7 246 bhack.define;
+#X msg 7 221 list C#4 C#^4 C#^^4 C#^^^4 C#+4 Dvvv4 Dvv4 Dv4 D4;
+#X connect 2 0 1 0;
+#X connect 3 0 2 0;
+#X connect 5 0 4 0;
+#X connect 6 0 5 0;

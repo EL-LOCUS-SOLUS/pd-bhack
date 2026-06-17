@@ -1,4 +1,4 @@
-local b_chords = pd.Class:new():register("bhack.chords")
+local b_chords = pd.Class:new():register("bhack.chord-seq")
 local bhack = require("bhack")
 
 -- local m2n = require("bhack").utils.m2n
@@ -17,7 +17,7 @@ function b_chords:initialize(_, args)
 	self.current_clef_key = "g"
 
 	-- Geometry
-	local default_width = 400
+	local default_width = 200
 	local default_height = 80
 	self.width = args and tonumber(args[1]) or default_width
 	self.height = args and tonumber(args[2]) or default_height
@@ -38,10 +38,11 @@ function b_chords:initialize(_, args)
 	self.Score = bhack.score.Score:new(self.width, self.height)
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = false,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
+		draw = true,
 	})
 
 	return true
@@ -221,10 +222,11 @@ function b_chords:in_1_size(args)
 	self.Score = bhack.score.Score:new(self.width, self.height)
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = false,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
+		draw = true,
 	})
 
 	self:repaint()
@@ -246,10 +248,11 @@ function b_chords:in_1_clef(args)
 
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = false,
 		tree = self.rhythm_tree_spec,
 		chords = normalize_chords_list(self.CHORDS),
 		bpm = self.bpm,
+		draw = true,
 	})
 
 	self:repaint()
@@ -260,10 +263,11 @@ function b_chords:in_1_bpm(args)
 	self.bpm = args and args[1]
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = false,
 		tree = self.rhythm_tree_spec,
 		chords = normalize_chords_list(self.CHORDS),
 		bpm = self.bpm,
+		draw = true,
 	})
 	self:repaint()
 end
@@ -301,6 +305,7 @@ function b_chords:in_1_dddd(atoms)
 		tree = self.rhythm_tree_spec,
 		chords = normalize_chords_list(self.CHORDS),
 		bpm = self.bpm,
+		draw = true,
 	})
 
 	self:repaint()

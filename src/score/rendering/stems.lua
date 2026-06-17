@@ -42,7 +42,7 @@ end
 -- ─────────────────────────────────────
 local function render_flag(ctx, note, stem_metrics, direction)
 	utils.log("render_flag", 2)
-	if not note or not stem_metrics or not ctx.render_tree then
+	if not note or not stem_metrics or not (ctx.render_tree or ctx.render_stems) then
 		return nil
 	end
 
@@ -86,9 +86,9 @@ local function render_flag(ctx, note, stem_metrics, direction)
 end
 
 -- ─────────────────────────────────────
-local function render_stem(ctx, note, head_metrics, direction_override)
+local function render_stem(ctx, note, head_metrics, direction_override, anchor_x_override)
 	utils.log("render_stem", 2)
-	if not should_render_stem(note) or not ctx.render_tree then
+	if not should_render_stem(note) or not (ctx.render_tree or ctx.render_stems) then
 		return nil
 	end
 
@@ -113,17 +113,17 @@ local function render_stem(ctx, note, head_metrics, direction_override)
 	end
 
 	local note_x = note.render_x or 0
-	local head_half = (head_metrics and head_metrics.width or 0) * 0.5
-
-	local right_edge = note_x + head_half
-	local left_edge = note_x - head_half
+	local right_edge = note_x + ((head_metrics and head_metrics.max_x) or 0)
+	local left_edge = note_x + ((head_metrics and head_metrics.min_x) or 0)
 
 	local anchor_x
 	local align_x = "center"
 	local align_y = (direction == "down") and "top" or "bottom"
 	local anchor_y = note.render_y or 0
 
-	if direction == "down" then
+	if anchor_x_override ~= nil then
+		anchor_x = anchor_x_override
+	elseif direction == "down" then
 		anchor_x = left_edge
 	else
 		anchor_x = right_edge

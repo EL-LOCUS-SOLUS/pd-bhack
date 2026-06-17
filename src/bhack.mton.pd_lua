@@ -41,18 +41,20 @@ function m2n_dddd:in_1_dddd(atoms)
 		return
 	end
 
-	local data = dddd:get_table()
-	local out
-
-	if type(data) ~= "table" then
-		out = m2n(data, self.temperament)
-	else
-		local t = {}
-		for _, v in ipairs(data) do
-			t[#t + 1] = m2n(v, self.temperament)
+	local function map_atoms_only(x)
+		if type(x) ~= "table" then
+			return m2n(x, self.temperament)
 		end
-		out = t
+
+		local t = {}
+		for k, v in pairs(x) do
+			t[k] = map_atoms_only(v)
+		end
+		return t
 	end
+
+	local data = dddd:get_table()
+	local out = map_atoms_only(data)
 
 	bhack.dddd:new_from_table(self, out):output(1)
 end

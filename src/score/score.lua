@@ -89,6 +89,7 @@ end
 -- ─────────────────────────────────────
 function Score:set_material(material)
 	self.render_tree = material.render_tree
+	self.render_stems = material.render_stems or self.render_tree
 	self.clef_name_or_key = material.clef
 	self.bpm = material.bpm
 
@@ -96,7 +97,7 @@ function Score:set_material(material)
 		self.default_clef_layout = M.DEFAULT_CLEF_LAYOUT
 	end
 
-	if not self.render_tree then
+	if not (self.render_tree or self.render_stems) then
 		material.tree = {}
 		material.tree[1] = {}
 		material.tree[1][1] = { #material.chords, 4 }
@@ -166,6 +167,7 @@ function Score:set_material(material)
 		bpm = self.bpm,
 		time_unity = 4,
 		render_tree = self.render_tree,
+		render_stems = self.render_stems,
 	}
 	refresh_chord_note_duration_ms(self.ctx)
 	if not material.draw then
@@ -571,14 +573,14 @@ function Score:getsvg()
 	if barline_svg then
 		table.insert(svg_chunks, barline_svg)
 	end
-	if tuplet_svg then
-		table.insert(svg_chunks, tuplet_svg)
-	end
 	if measure_number_svg then
 		table.insert(svg_chunks, measure_number_svg)
 	end
 	if notes_svg then
 		table.insert(svg_chunks, notes_svg)
+	end
+	if tuplet_svg then
+		table.insert(svg_chunks, tuplet_svg)
 	end
 	if tie_svg then
 		table.insert(svg_chunks, tie_svg)

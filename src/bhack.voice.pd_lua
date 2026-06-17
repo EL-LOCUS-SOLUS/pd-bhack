@@ -909,7 +909,7 @@ function b_voice:paint_layer_2(g)
 	if pos == nil and self.entry and self.entry.left then
 		pos = self.entry.left
 	end
-	if pos ~= nil then
+	if self.is_playing and pos ~= nil then
 		g:set_color(180, 75, 75)
 		local max_pos = math.max(0, self.width - padding)
 		if pos > max_pos then

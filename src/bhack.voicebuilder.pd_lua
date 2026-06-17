@@ -1,5 +1,6 @@
 local b_voice = pd.Class:new():register("bhack.voicebuilder")
 local bhack = require("bhack")
+local constants = require("score.constants")
 
 --╭─────────────────────────────────────╮
 --│           Object Creator            │
@@ -11,13 +12,16 @@ function b_voice:initialize(_, args)
 	-- Material
 	self.chords_raw = { { "C4" } }
 	self.noteheads_raw = { { "ord" } }
+	self.articulations_raw = { {} }
 	self.dynamics_raw = { {} }
+	self.stems_raw = {}
 	self.CHORDS = {
-		{ notes = { "C4" }, noteheads = { "notehead" }, dynamics = {} },
+		{ notes = { "C4" }, noteheads = { "notehead" }, articulations = {}, dynamics = {} },
 	}
 	self.rhythm_tree_spec = { { { 4, 4 }, { 1, 1, 1, 1 } } } -- default input
 	self.current_clef_key = "g"
 	self.using_noteheads = false
+	self.using_stems = false
 
 	if args then
 		local i = 1
@@ -30,19 +34,24 @@ function b_voice:initialize(_, args)
 				self["in_" .. inlet_count .. "_dddd"] = self.in_noteheads
 				self.inlets = self.inlets + 1
 				self.using_noteheads = true
+			elseif v == "-articulations" then
+				i = i + 1
+				inlet_count = inlet_count + 1
+				self["in_" .. inlet_count .. "_dddd"] = self.in_articulations
+				self.inlets = self.inlets + 1
+				self.using_articulations = true
 			elseif v == "-dynamics" then
 				i = i + 1
 				inlet_count = inlet_count + 1
 				self["in_" .. inlet_count .. "_dddd"] = self.in_dynamics
 				self.inlets = self.inlets + 1
 				self.using_dynamics = true
-			elseif v == "-stems" then
-				error("Not implemented stems yet")
+			elseif v == "-stem" or v == "-stems" then
 				i = i + 1
 				inlet_count = inlet_count + 1
-				self["in_" .. inlet_count .. "_dddd"] = self.in_noteheads
+				self["in_" .. inlet_count .. "_dddd"] = self.in_stems
 				self.inlets = self.inlets + 1
-				self.using_steams = true
+				self.using_stems = true
 			else
 				error("[bhack.define] Wrong arguments")
 			end
@@ -67,6 +76,7 @@ function b_voice:initialize(_, args)
 	self.Score:set_material({
 		clef = self.current_clef_key,
 		render_tree = true,
+		render_stems = self.using_stems,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -106,6 +116,39 @@ local function is_rhythm_tree(tbl)
 	return true
 end
 
+-- ─────────────────────────────────────
+local function normalize_stem_glyph(raw)
+	if type(raw) == "table" then
+		raw = raw[1]
+	end
+	if raw == nil then
+		return nil
+	end
+	if type(raw) == "number" then
+		raw = string.format("%x", raw)
+	elseif type(raw) ~= "string" then
+		raw = tostring(raw)
+	end
+	local token = raw:match("^%s*(.-)%s*$")
+	if token == "" or token:lower() == "auto" or token:lower() == "none" or token:lower() == "n" then
+		return nil
+	end
+	if token:match("^stem") then
+		return token
+	end
+	local key = token:lower():gsub("^u%+", ""):gsub("^0x", ""):gsub("[^%w]", "")
+	return constants.STEM_GLYPHS[key]
+end
+
+-- ─────────────────────────────────────
+local function apply_optional_chord_fields(self, i)
+	self.CHORDS[i] = self.CHORDS[i] or {}
+	self.CHORDS[i].noteheads = self.noteheads_raw[i]
+	self.CHORDS[i].articulations = self.articulations_raw[i] or {}
+	self.CHORDS[i].dynamics = self.dynamics_raw[i]
+	self.CHORDS[i].stem = normalize_stem_glyph(self.stems_raw[i])
+end
+
 --╭─────────────────────────────────────╮
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
@@ -129,7 +172,8 @@ function b_voice:in_1_size(args)
 	self.Score = bhack.score.Score:new(self.width, self.height)
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = self.render_tree,
+		render_tree = self.render_tree or self.using_stems,
+		render_stems = self.using_stems,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -143,7 +187,8 @@ function b_voice:in_1_fontsize(args)
 	self.Score:set_vertical_padding(size)
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = self.render_tree,
+		render_tree = self.render_tree or self.using_stems,
+		render_stems = self.using_stems,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -166,7 +211,8 @@ function b_voice:in_1_clef(args)
 
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = self.render_tree,
+		render_tree = self.render_tree or self.using_stems,
+		render_stems = self.using_stems,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -181,14 +227,34 @@ function b_voice:in_noteheads(atoms)
 
 	local chords_size = #self.chords_raw
 	for i = 1, chords_size do
-		self.CHORDS[i] = self.CHORDS[i] or {}
-		self.CHORDS[i].noteheads = self.noteheads_raw[i]
-		self.CHORDS[i].dynamics = self.dynamics_raw[i]
+		apply_optional_chord_fields(self, i)
 	end
 
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = self.render_tree,
+		render_tree = self.render_tree or self.using_stems,
+		render_stems = self.using_stems,
+		tree = self.rhythm_tree_spec,
+		chords = self.CHORDS,
+		bpm = self.bpm,
+	})
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_articulations(atoms)
+	local id = atoms[1]
+	local dddd = bhack.dddd:new_from_id(self, id)
+	self.articulations_raw = dddd:get_table()
+
+	local chords_size = #self.chords_raw
+	for i = 1, chords_size do
+		apply_optional_chord_fields(self, i)
+	end
+
+	self.Score:set_material({
+		clef = self.current_clef_key,
+		render_tree = self.render_tree or self.using_stems,
+		render_stems = self.using_stems,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -203,14 +269,34 @@ function b_voice:in_dynamics(atoms)
 
 	local chords_size = #self.chords_raw
 	for i = 1, chords_size do
-		self.CHORDS[i] = self.CHORDS[i] or {}
-		self.CHORDS[i].noteheads = self.noteheads_raw[i]
-		self.CHORDS[i].dynamics = self.dynamics_raw[i]
+		apply_optional_chord_fields(self, i)
 	end
 
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = self.render_tree,
+		render_tree = self.render_tree or self.using_stems,
+		render_stems = self.using_stems,
+		tree = self.rhythm_tree_spec,
+		chords = self.CHORDS,
+		bpm = self.bpm,
+	})
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_stems(atoms)
+	local id = atoms[1]
+	local dddd = bhack.dddd:new_from_id(self, id)
+	self.stems_raw = dddd:get_table()
+
+	local chords_size = #self.chords_raw
+	for i = 1, chords_size do
+		apply_optional_chord_fields(self, i)
+	end
+
+	self.Score:set_material({
+		clef = self.current_clef_key,
+		render_tree = self.render_tree or self.using_stems,
+		render_stems = self.using_stems,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -222,7 +308,8 @@ function b_voice:in_1_bpm(args)
 	self.bpm = args and args[1]
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = self.render_tree,
+		render_tree = self.render_tree or self.using_stems,
+		render_stems = self.using_stems,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -247,7 +334,8 @@ function b_voice:in_1_dddd(atoms)
 	self.rhythm_tree_spec = t
 	self.Score:set_material({
 		clef = self.current_clef_key,
-		render_tree = self.render_tree,
+		render_tree = self.render_tree or self.using_stems,
+		render_stems = self.using_stems,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -257,7 +345,8 @@ function b_voice:in_1_dddd(atoms)
 
 	local newt = {
 		clef = self.current_clef_key,
-		render_tree = true,
+		render_tree = self.render_tree or self.using_stems,
+		render_stems = self.using_stems,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
@@ -303,6 +392,7 @@ function b_voice:in_2_dddd(atoms)
 		for i = 1, chords_size do
 			self.CHORDS[i] = self.CHORDS[i] or {}
 			self.CHORDS[i].notes = self.chords_raw[i]
+			apply_optional_chord_fields(self, i)
 		end
 	end
 end

@@ -34,7 +34,7 @@ function b_collect:in_2_dddd(atoms)
 	local dddd = bhack.dddd:new_from_id(self, id)
 	local t = dddd:get_table()
 
-	table.insert(self.collected_table, dddd:deep_copy_table(t))
+	table.insert(self.collected_table, t)
 end
 
 -- ─────────────────────────────────────
