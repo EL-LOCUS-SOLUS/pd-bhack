@@ -194,14 +194,15 @@ local function render_chord_dynamic(state)
 	return state
 end
 
-local function assign_cluster_offsets(notes, threshold_steps, offset_px)
+local function assign_cluster_offsets(notes, threshold_steps, offset_px, lane_clearance)
 	utils.log("assign_cluster_offsets", 2)
 	if not notes or offset_px <= 0 then
 		return
 	end
+	local lane_offset = offset_px + (lane_clearance or 0)
 
 	for _, n in ipairs(notes) do
-		n.cluster_offset_px = -offset_px
+		n.cluster_offset_px = -lane_offset
 	end
 
 	table.sort(notes, function(a, b)
@@ -219,7 +220,7 @@ local function assign_cluster_offsets(notes, threshold_steps, offset_px)
 			end
 		end
 		if place_left then
-			note.cluster_offset_px = -offset_px
+			note.cluster_offset_px = -lane_offset
 			table.insert(left_steps, steps)
 		else
 			local place_right = true
@@ -230,10 +231,10 @@ local function assign_cluster_offsets(notes, threshold_steps, offset_px)
 				end
 			end
 			if place_right then
-				note.cluster_offset_px = offset_px
+				note.cluster_offset_px = lane_offset
 				table.insert(right_steps, steps)
 			else
-				note.cluster_offset_px = -offset_px
+				note.cluster_offset_px = -lane_offset
 				table.insert(left_steps, steps)
 			end
 		end
@@ -1072,7 +1073,11 @@ local function prepare_chord_notes(state)
 		note.stem_align_y = nil
 		note.stem_metrics = nil
 	end
-	assign_cluster_offsets(chord.notes, 1, state.cluster_offset_px)
+	local lane_clearance = 0
+	if not (state.ctx.render_tree or state.ctx.render_stems) then
+		lane_clearance = math.max(state.staff.line_thickness or 0, state.staff_spacing * 0.05)
+	end
+	assign_cluster_offsets(chord.notes, 1, state.cluster_offset_px, lane_clearance)
 
 	return state
 end

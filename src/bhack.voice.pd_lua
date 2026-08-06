@@ -9,6 +9,7 @@ function b_voice:initialize(_, args)
 	pd.post("[bhack.voice] Initializing bhack.voice...")
 	self.inlets = 2
 	self.outlets = 2
+	args = args or {}
 
 	-- Material
 	self.chords_raw = { { "C4" }, { "C4" }, { "C4" } }
@@ -24,8 +25,17 @@ function b_voice:initialize(_, args)
 	-- Geometry
 	local default_width = 250
 	local default_height = 80
-	self.width = args and tonumber(args[1]) or default_width
-	self.height = args and tonumber(args[2]) or default_height
+	local first_option = 1
+	self.width = default_width
+	self.height = default_height
+	if tonumber(args[1]) then
+		self.width = tonumber(args[1])
+		first_option = 2
+		if tonumber(args[2]) then
+			self.height = tonumber(args[2])
+			first_option = 3
+		end
+	end
 	self:set_size(self.width, self.height)
 
 	-- Playback
@@ -41,16 +51,14 @@ function b_voice:initialize(_, args)
 	self.midiplayback = true
 
 	-- Playback
-	if args then
-		local i = 1
-		while i <= #args do
-			local v = args[i]
-			if v == "-playchords" then
-				i = i + 1
-				self.midiplayback = false
-			else
-				error("[bhack.define] Wrong arguments")
-			end
+	local i = first_option
+	while i <= #args do
+		local v = args[i]
+		if v == "-playchords" then
+			i = i + 1
+			self.midiplayback = false
+		else
+			error("[bhack.voice] Unknown argument " .. tostring(v))
 		end
 	end
 
@@ -450,6 +458,15 @@ end
 --╭─────────────────────────────────────╮
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
+function b_voice:update_args()
+	local args = { self.width, self.height }
+	if not self.midiplayback then
+		args[#args + 1] = "-playchords"
+	end
+	self:set_args(args)
+end
+
+-- ─────────────────────────────────────
 function b_voice:in_1_size(args)
 	if type(args) ~= "table" then
 		return
@@ -463,6 +480,7 @@ function b_voice:in_1_size(args)
 		self.height = maybe_height
 	end
 	self:set_size(self.width, self.height)
+	self:update_args()
 	self.Score = bhack.score.Score:new(self.width, self.height)
 	self.Score:set_material({
 		clef = self.current_clef_key,
@@ -697,6 +715,7 @@ function b_voice:in_1_midiplayback(atoms)
 		self.midiplayback = false
 		pd.post("[bhack.voice] midiplayback off")
 	end
+	self:update_args()
 end
 
 -- ─────────────────────────────────────

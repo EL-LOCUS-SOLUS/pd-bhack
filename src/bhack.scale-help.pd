@@ -1,0 +1,20 @@
+#N canvas 0 0 760 520 10;
+#X declare -lib xlab;
+#X text 24 20 Scale numbers or numeric dddd lists between ranges.;
+#X floatatom 24 92 8 0 0 0 - - - 0;
+#X obj 24 122 bhack.scale 0 100 0 10;
+#X floatatom 24 154 8 0 0 0 - - - 0;
+#X msg 250 92 0 2 5;
+#X obj 250 122 bhack.define;
+#X obj 250 154 bhack.scale 0 100;
+#X obj 250 186 bhack.print;
+#X text 24 66 Explicit input range: 5 becomes 50.;
+#X text 250 66 Automatic input range: 0 2 5 becomes 0 40 100.;
+#X text 24 232 Inlets: value/list \, minout \, maxout \, minin \, maxin.;
+#X text 24 256 Creation arguments: minout maxout [minin maxin].;
+#X connect 2 0 3 0;
+#X connect 3 0 4 0;
+#X connect 5 0 6 0;
+#X connect 6 0 7 0;
+#X connect 7 0 8 0;
+

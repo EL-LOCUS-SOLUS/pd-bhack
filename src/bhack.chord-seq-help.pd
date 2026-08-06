@@ -21,6 +21,7 @@
 #X obj 17 392 bhack.chord-seq;
 #X msg 58 82 list [C4 Db4 E4] [C4 F4 A4] [G4 Ab4 B5] [G3 Ab4 B4] [A4 Ab4 B5];
 #X msg 82 114 list C4 Evv4 G^4;
+#X msg 121 330 list (C4 D4 A4);
 #X connect 1 0 14 0;
 #X connect 3 0 14 0;
 #X connect 8 0 14 0;
@@ -31,3 +32,4 @@
 #X connect 15 0 14 0;
 #X connect 18 0 14 0;
 #X connect 19 0 14 0;
+#X connect 20 0 14 0;

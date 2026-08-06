@@ -206,6 +206,11 @@ end
 --╭─────────────────────────────────────╮
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
+function b_chords:update_args()
+	self:set_args({ self.width, self.height })
+end
+
+-- ─────────────────────────────────────
 function b_chords:in_1_size(args)
 	if type(args) ~= "table" then
 		return
@@ -219,6 +224,7 @@ function b_chords:in_1_size(args)
 		self.height = maybe_height
 	end
 	self:set_size(self.width, self.height)
+	self:update_args()
 	self.Score = bhack.score.Score:new(self.width, self.height)
 	self.Score:set_material({
 		clef = self.current_clef_key,
@@ -386,7 +392,7 @@ function b_chords:in_1_reload()
 	package.loaded.bhack = nil
 	bhack = nil
 	for k, _ in pairs(package.loaded) do
-		if k == "score/score" or k == "score/utils" then
+		if k:match("^score[/.]") then
 			package.loaded[k] = nil
 		end
 	end
