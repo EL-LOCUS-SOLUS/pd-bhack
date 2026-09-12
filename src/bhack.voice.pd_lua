@@ -266,6 +266,54 @@ local function smallest_int_scale(list)
     return k
 end
 
+-- ─────────────────────────────────────
+local function ratios_to_numbers(node)
+    if type(node) ~= "table" then return node end
+    local out = {}
+    for _, item in ipairs(node) do
+        if type(item) == "table" then
+            out[#out + 1] = ratios_to_numbers(item)
+        elseif type(item) == "string" then
+            local a, b = item:match("^(%-?%d+)/(%d+)$")
+            if a and b then
+                out[#out + 1] = tonumber(a) / tonumber(b)
+            else
+                out[#out + 1] = item
+            end
+        else
+            out[#out + 1] = item
+        end
+    end
+    return out
+end
+
+local function normalize_floats(node)
+    if type(node) ~= "table" then return node end
+    local out = {}
+    for _, item in ipairs(node) do
+        if type(item) == "table" then
+            out[#out + 1] = normalize_floats(item)
+        else
+            out[#out + 1] = item
+        end
+    end
+    local all_numbers = true
+    for _, item in ipairs(out) do
+        if type(item) ~= "number" then all_numbers = false break end
+    end
+    if all_numbers and has_float(out) then
+        local k = smallest_int_scale(out)
+        if k > 1 then
+            for i, v in ipairs(out) do
+                local nv = v * k
+                local iv = math.tointeger(nv)
+                out[i] = iv or nv
+            end
+        end
+    end
+    return out
+end
+
 local function normalize_floats(node)
     if type(node) ~= "table" then return node end
     local out = {}
@@ -625,7 +673,8 @@ function b_voice:in_1_dddd(atoms)
 		self:error("dddd payload is not a table")
 		return
 	end
-	t = normalize_rhythm_tree_payload(t)
+    t = normalize_rhythm_tree_payload(t)
+    t = ratios_to_numbers(t)
     t = normalize_floats(t)
 
 	self.playbar_position = 0
