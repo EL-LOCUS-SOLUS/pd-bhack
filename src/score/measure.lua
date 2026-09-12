@@ -109,6 +109,48 @@ local function normalize_single_measure_span_tree(time_sig, tree)
 end
 
 -- ─────────────────────────────────────
+local function split_into_notatable(value, total, container_duration, min_figure)
+    local pieces = {}
+    local remaining = value
+    local guard = 0
+    while remaining > 0 and guard < 64 do
+        guard = guard + 1
+        local duration = container_duration * (remaining / total)
+        local raw_figure = (duration ~= 0) and (1 / duration) or 0
+        local dot, fig = rhythm.compute_figure(remaining, min_figure)
+        if not fig or fig <= 0 then
+            fig = utils.floor_pow2(raw_figure)
+            dot = 0
+        end
+        -- reconstruct what duration this notated figure represents
+        local notated = fig > 0 and (1 / fig) or 0
+        for _ = 1, dot do
+            notated = notated * 1.5
+        end
+        notated = notated * min_figure / min_figure  -- noop, keep explicit
+        local exact = 1 / raw_figure
+        if raw_figure > 0 and math.abs((1 / fig) * (dot == 0 and 1 or (2 - 0.5^dot)) - (remaining / total) * container_duration) < 1e-6 then
+            pieces[#pieces + 1] = remaining
+            remaining = 0
+            break
+        end
+        -- not notatable as one: take largest power-of-two chunk
+        local chunk = utils.floor_pow2(remaining)
+        if chunk >= remaining then chunk = chunk / 2 end
+        if chunk <= 0 then
+            pieces[#pieces + 1] = remaining
+            break
+        end
+        pieces[#pieces + 1] = chunk
+        remaining = remaining - chunk
+    end
+    if remaining > 0 and #pieces == 0 then
+        pieces[#pieces + 1] = value
+    end
+    return pieces
+end
+
+-- ─────────────────────────────────────
 function Measure:new(time_sig, tree, number)
 	tree = normalize_single_measure_span_tree(time_sig, tree)
 	local measure_sum = 0
@@ -322,8 +364,20 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 			if parent_tuplet then
 				parent_tuplet.end_index = tuple_obj.end_index
 			end
-		elseif type(entry) == "number" then
-			self:append_value_entry(entry, nil, parent_tuplet, total, container_duration, measure_min_figure, false)
+        elseif type(entry) == "number" then
+            local sign = entry < 0 and -1 or 1
+            local mag = math.abs(entry)
+            local pieces = split_into_notatable(mag, total, container_duration, measure_min_figure)
+            if #pieces <= 1 then
+                self:append_value_entry(entry, nil, parent_tuplet, total, container_duration, measure_min_figure, false)
+            else
+                local is_rest = sign < 0
+                for i, p in ipairs(pieces) do
+                    local tied = (i < #pieces) and not is_rest
+                    local signed = is_rest and -p or p
+                    self:append_value_entry(signed, nil, parent_tuplet, total, container_duration, measure_min_figure, tied)
+                end
+            end
 		elseif type(entry) == "string" then
 			local s = entry
 			local last = s:sub(-1)
