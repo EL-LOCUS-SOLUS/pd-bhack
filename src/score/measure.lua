@@ -321,7 +321,29 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
     for _, entry in ipairs(rhythms) do
         if rhythm.is_tuplet_entry(entry) then
             if self:is_compound_eighth_beam_grouping() then
-                self:expand_level(entry[2], container_duration * (entry[1] / total), nil, parent_min_figure, parent_min_figure)
+                local child_rhythms = entry[2]
+                local child_container = container_duration * (entry[1] / total)
+                local tuple_obj = rhythm.Tuplet:new(1, child_rhythms, {
+                    parent = parent_tuplet,
+                    parent_sum = total,
+                    container_duration = child_container,
+                    depth = 1,
+                    meter_type = self.meter_type,
+                    measure = self,
+                })
+                tuple_obj.is_beam_group_only = true
+                tuple_obj.require_draw = false
+                tuple_obj.label_string = nil
+                tuple_obj.start_index = #self.entries + 1
+                self.tuplets[#self.tuplets + 1] = tuple_obj
+                if parent_tuplet then
+                    parent_tuplet.children[#parent_tuplet.children + 1] = tuple_obj
+                end
+                self:expand_level(child_rhythms, child_container, tuple_obj, parent_min_figure, parent_min_figure)
+                tuple_obj.end_index = math.max(tuple_obj.start_index, #self.entries)
+                if parent_tuplet then
+                    parent_tuplet.end_index = tuple_obj.end_index
+                end
             else
                 local up_value = entry[1]
                 local child_rhythms = entry[2]
