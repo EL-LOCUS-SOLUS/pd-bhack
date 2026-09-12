@@ -193,32 +193,32 @@ function Measure:is_compound_eighth_beam_grouping()
         return false
     end
 
-    local subdivisions = 0
+    local total = 0
     for _, entry in ipairs(self.tree) do
-        if not rhythm.is_tuplet_entry(entry) then
+        if type(entry) == "number" then
+            total = total + math.abs(entry)
+        elseif type(entry) == "string" then
             return false
-        end
-
-        local up_value = math.abs(entry[1] or 0)
-        if up_value ~= 1 then
-            return false
-        end
-
-        local children = entry[2]
-        if type(children) ~= "table" or #children == 0 then
-            return false
-        end
-
-        for _, child in ipairs(children) do
-            if rhythm.is_tuplet_entry(child) then
+        elseif rhythm.is_tuplet_entry(entry) then
+            total = total + math.abs(entry[1] or 0)
+            local children = entry[2]
+            if type(children) ~= "table" or #children == 0 then
                 return false
             end
+            for _, child in ipairs(children) do
+                if type(child) ~= "number" then
+                    return false
+                end
+            end
+        else
+            return false
         end
-
-        subdivisions = subdivisions + rhythm.rhythm_sum(children)
     end
-
-    return subdivisions == numerator
+    if total <= 0 then return false end
+    local ratio = total / numerator
+    if ratio < 1 then return false end
+    local log2 = math.log(ratio) / math.log(2)
+    return math.abs(log2 - math.floor(log2 + 0.5)) < 1e-9
 end
 
 -- ─────────────────────────────────────
@@ -257,11 +257,17 @@ function Measure:append_value_entry(
 
     local entry_index = #self.entries + 1
     local raw_figure = (duration_whole ~= 0) and (1 / duration_whole) or 0
-    local dot_level, figure = rhythm.compute_figure(value, min_figure)
-    if not figure or figure <= 0 then
-        figure = utils.floor_pow2(raw_figure)
+    local base_fig = utils.ceil_pow2(raw_figure)
+    local dot_level = 0
+    if base_fig > 0 and raw_figure > 0 then
+        local target = base_fig / raw_figure
+        while target > 1.0001 and dot_level < 4 do
+            dot_level = dot_level + 1
+            target = target / 1.5
+        end
     end
-    local notehead = (figure > 2) and "noteheadBlack" or (figure > 1) and "noteheadHalf" or "noteheadWhole"
+    local figure = base_fig
+    local notehead = (base_fig >= 4) and "noteheadBlack" or (base_fig >= 2) and "noteheadHalf" or "noteheadWhole"
 
     local entry_meta = {
         time_sig = self.time_sig,
@@ -314,55 +320,59 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
     assert(measure_min_figure, "measure_min_figure is nil")
     for _, entry in ipairs(rhythms) do
         if rhythm.is_tuplet_entry(entry) then
-            local up_value = entry[1]
-            local child_rhythms = entry[2]
-            local tuple_depth = parent_tuplet and ((parent_tuplet.depth or 1) + 1) or 1
-            local tuplet_sum = rhythm.rhythm_sum(child_rhythms)
-            local total_figure_tuplet = parent_min_figure / up_value
-            local tuplet_min_figure = (total_figure_tuplet * utils.floor_pow2(tuplet_sum))
-            local is_whole_span_unit_tuplet = (math.abs(tonumber(up_value) or 0) == 1) and (math.abs(total - 1) < 1e-9)
-            if is_whole_span_unit_tuplet then
-                tuplet_min_figure = math.max(parent_min_figure, 4)
-            end
+            if self:is_compound_eighth_beam_grouping() then
+                self:expand_level(entry[2], container_duration * (entry[1] / total), nil, parent_min_figure, parent_min_figure)
+            else
+                local up_value = entry[1]
+                local child_rhythms = entry[2]
+                local tuple_depth = parent_tuplet and ((parent_tuplet.depth or 1) + 1) or 1
+                local tuplet_sum = rhythm.rhythm_sum(child_rhythms)
+                local total_figure_tuplet = parent_min_figure / up_value
+                local tuplet_min_figure = (total_figure_tuplet * utils.floor_pow2(tuplet_sum))
+                local is_whole_span_unit_tuplet = (math.abs(tonumber(up_value) or 0) == 1) and (math.abs(total - 1) < 1e-9)
+                if is_whole_span_unit_tuplet then
+                    tuplet_min_figure = math.max(parent_min_figure, 4)
+                end
 
-            local is_top_measure_tuplet =
-                (parent_tuplet == nil)
-                and self.is_measure_tuplet
-                and (tonumber(self.time_sig and self.time_sig[1]) == tonumber(up_value))
-            if is_top_measure_tuplet then
-                tuplet_min_figure = parent_min_figure
-            end
+                local is_top_measure_tuplet =
+                    (parent_tuplet == nil)
+                    and self.is_measure_tuplet
+                    and (tonumber(self.time_sig and self.time_sig[1]) == tonumber(up_value))
+                if is_top_measure_tuplet then
+                    tuplet_min_figure = parent_min_figure
+                end
 
-            local tuple_obj = rhythm.Tuplet:new(up_value, child_rhythms, {
-                parent = parent_tuplet,
-                parent_sum = total,
-                container_duration = container_duration,
-                depth = tuple_depth,
-                meter_type = self.meter_type,
-                measure = self,
-            })
+                local tuple_obj = rhythm.Tuplet:new(up_value, child_rhythms, {
+                    parent = parent_tuplet,
+                    parent_sum = total,
+                    container_duration = container_duration,
+                    depth = tuple_depth,
+                    meter_type = self.meter_type,
+                    measure = self,
+                })
 
-            if tuple_obj.is_beam_group_only then
-                tuplet_min_figure = parent_min_figure
-            end
+                if tuple_obj.is_beam_group_only then
+                    tuplet_min_figure = parent_min_figure
+                end
 
-            tuple_obj.parent = parent_tuplet
-            tuple_obj.depth = tuple_depth
-            tuple_obj.start_index = #self.entries + 1
-            self.tuplets[#self.tuplets + 1] = tuple_obj
-            if tuple_depth > self.max_tuplet_depth then
-                self.max_tuplet_depth = tuple_depth
-            end
+                tuple_obj.parent = parent_tuplet
+                tuple_obj.depth = tuple_depth
+                tuple_obj.start_index = #self.entries + 1
+                self.tuplets[#self.tuplets + 1] = tuple_obj
+                if tuple_depth > self.max_tuplet_depth then
+                    self.max_tuplet_depth = tuple_depth
+                end
 
-            if parent_tuplet then
-                parent_tuplet.children[#parent_tuplet.children + 1] = tuple_obj
-            end
+                if parent_tuplet then
+                    parent_tuplet.children[#parent_tuplet.children + 1] = tuple_obj
+                end
 
-            self:expand_level(child_rhythms, tuple_obj.duration, tuple_obj, tuplet_min_figure, tuplet_min_figure)
+                self:expand_level(child_rhythms, tuple_obj.duration, tuple_obj, tuplet_min_figure, tuplet_min_figure)
 
-            tuple_obj.end_index = math.max(tuple_obj.start_index, #self.entries)
-            if parent_tuplet then
-                parent_tuplet.end_index = tuple_obj.end_index
+                tuple_obj.end_index = math.max(tuple_obj.start_index, #self.entries)
+                if parent_tuplet then
+                    parent_tuplet.end_index = tuple_obj.end_index
+                end
             end
         elseif type(entry) == "number" then
             local sign = entry < 0 and -1 or 1

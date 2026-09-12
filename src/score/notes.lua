@@ -45,12 +45,12 @@ end
 
 -- ─────────────────────────────────────
 local function chord_figure_notehead_suffix(chord)
-	local base = rhythm.figure_to_notehead(chord and chord.value, chord and chord.min_figure)
+	local base = chord and chord.notehead
 	if type(base) ~= "string" or not base:match("^notehead") then
-		base = chord and chord.notehead
+		base = "noteheadBlack"
 	end
-	local suffix = type(base) == "string" and base:match("^notehead(.+)$") or nil
-	if not suffix or suffix == "" then
+	local suffix = base:match("^notehead(.+)$") or "Black"
+	if suffix == "" then
 		suffix = "Black"
 	end
 	return suffix, base
