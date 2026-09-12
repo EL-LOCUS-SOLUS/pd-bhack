@@ -238,6 +238,62 @@ local function normalize_rhythm_tree_payload(tbl)
 end
 
 -- ─────────────────────────────────────
+local function gcd(a, b)
+    while b ~= 0 do a, b = b, a % b end
+    return a
+end
+
+local function has_float(list)
+    for _, v in ipairs(list) do
+        if type(v) == "number" and math.type(v) == "float" then return true end
+    end
+    return false
+end
+
+local function smallest_int_scale(list)
+    local k = 1
+    for _, v in ipairs(list) do
+        if type(v) == "number" then
+            local d = 1
+            local x = v
+            while math.abs(x - math.floor(x + 0.5)) > 1e-9 do
+                x = x + v
+                d = d + 1
+            end
+            k = k * d // gcd(k, d)
+        end
+    end
+    return k
+end
+
+local function normalize_floats(node)
+    if type(node) ~= "table" then return node end
+    local out = {}
+    for _, item in ipairs(node) do
+        if type(item) == "table" then
+            out[#out + 1] = normalize_floats(item)
+        else
+            out[#out + 1] = item
+        end
+    end
+    local all_numbers = true
+    for _, item in ipairs(out) do
+        if type(item) ~= "number" then all_numbers = false break end
+    end
+    if all_numbers and has_float(out) then
+        local k = smallest_int_scale(out)
+        if k > 1 then
+            for i, v in ipairs(out) do
+                local nv = v * k
+                local iv = math.tointeger(nv)
+                out[i] = iv or nv
+            end
+        end
+    end
+    return out
+end
+
+-- ─────────────────────────────────────
 local function get_max_measure_end_x(ctx)
 	if not ctx or type(ctx.measure_meta) ~= "table" then
 		return nil
@@ -570,6 +626,7 @@ function b_voice:in_1_dddd(atoms)
 		return
 	end
 	t = normalize_rhythm_tree_payload(t)
+    t = normalize_floats(t)
 
 	self.playbar_position = 0
 
