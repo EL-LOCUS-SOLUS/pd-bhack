@@ -10,6 +10,10 @@
 #X msg 238 235 list C#^^4 C+4;
 #X obj 38 233 bhack.mton 96edo;
 #X msg 38 167 60.5 62 61.55 74.5;
+#X msg 344 167 keysig on;
+#X msg 432 167 keysig off;
+#X msg 344 194 60 62 63 65 67 69 70;
+#X text 344 142 infer enharmonic spelling from the nearest circle-of-fifths key signature;
 #X connect 1 0 8 0;
 #X connect 3 0 8 0;
 #X connect 6 0 4 0;
@@ -17,3 +21,6 @@
 #X connect 8 0 4 0;
 #X connect 8 0 5 0;
 #X connect 9 0 8 0;
+#X connect 10 0 8 0;
+#X connect 11 0 8 0;
+#X connect 12 0 8 0;

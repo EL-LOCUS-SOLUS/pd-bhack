@@ -731,9 +731,6 @@ function b_voice:export_txt(path)
 	score[#score + 1] = table.concat({ "ONNXMODEL", '"flute.onnx"' }, " ")
 	score[#score + 1] = "\n"
 
-	score[#score + 1] = table.concat({ "ONNXDESCRIPTORS", "mfcc logmel zcr centroid flatness hfr" }, " ")
-	score[#score + 1] = "\n"
-
 	local current_measure = 0
 	for _, v in pairs(chords) do
 		local tokens = {}
