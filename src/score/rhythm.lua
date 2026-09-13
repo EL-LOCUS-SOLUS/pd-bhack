@@ -321,6 +321,9 @@ local function compute_tuplet_label(reference_value, sum_value, measure)
 	utils.log("compute_tuplet_label", 2)
 	reference_value = math.max(1, math.floor(math.abs(reference_value or 1) + 0.5))
 	sum_value = math.max(1, math.floor(math.abs(sum_value or 1) + 0.5))
+	if reference_value == sum_value then
+		return false, nil
+	end
 	local function normalize_measure_level_sum(value, target)
 		local best = value
 		local best_distance = math.abs(best - target)

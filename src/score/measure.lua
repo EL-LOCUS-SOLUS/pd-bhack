@@ -35,30 +35,28 @@ local function instantiate_inline_chord(spec, entry_info)
 end
 
 -- ─────────────────────────────────────
-local function additive_quarter_groups(numerator)
+local function meter_subdivision_groups(numerator)
     local groups = {}
     local remaining = math.tointeger(numerator) or tonumber(numerator) or 0
     if remaining <= 0 then
         return groups
     end
 
-    while remaining > 0 do
-        if remaining == 4 then
-            groups[#groups + 1] = 2
-            groups[#groups + 1] = 2
-            break
-        elseif remaining == 3 then
-            groups[#groups + 1] = 3
-            break
-        elseif remaining == 2 then
-            groups[#groups + 1] = 2
-            break
-        elseif remaining > 4 then
-            groups[#groups + 1] = 3
-            remaining = remaining - 3
-        else
-            break
-        end
+    -- Prefer regular ternary or binary groups before an additive 3 + 2 + ... meter.
+    local group_size
+    if remaining % 3 == 0 then
+        group_size = 3
+    elseif remaining % 2 == 0 then
+        group_size = 2
+    else
+        groups[#groups + 1] = 3
+        remaining = remaining - 3
+        group_size = 2
+    end
+
+    while remaining >= group_size do
+        groups[#groups + 1] = group_size
+        remaining = remaining - group_size
     end
 
     return groups
@@ -85,11 +83,11 @@ local function normalize_single_measure_span_tree(time_sig, tree)
         return tree
     end
 
-    if numerator <= 4 or (numerator % 2) == 0 then
+    if numerator <= 4 then
         return { (first < 0) and (-numerator) or numerator }
     end
 
-    local groups = additive_quarter_groups(numerator)
+    local groups = meter_subdivision_groups(numerator)
     if #groups <= 1 then
         return tree
     end
@@ -320,6 +318,11 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
             local tuplet_sum = rhythm.rhythm_sum(child_rhythms)
             local total_figure_tuplet = parent_min_figure / up_value
             local tuplet_min_figure = (total_figure_tuplet * utils.floor_pow2(tuplet_sum))
+            if tuplet_sum == math.abs(up_value) then
+                -- Equal parent and child weights preserve the written unit.
+                -- Flooring a ternary sum would turn (3 (1 1 1)) eighths into 5 1/3 figures.
+                tuplet_min_figure = parent_min_figure
+            end
             local is_whole_span_unit_tuplet = (math.abs(tonumber(up_value) or 0) == 1) and (math.abs(total - 1) < 1e-9)
             if is_whole_span_unit_tuplet then
                 tuplet_min_figure = math.max(parent_min_figure, 4)
@@ -392,7 +395,8 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
             if n < 0 then
                 error("Rest can't be tied")
             end
-            local pieces = split_pow2(n)
+            local dot, fig = rhythm.compute_figure(n, parent_min_figure)
+            local pieces = figure_matches(n, dot, fig, parent_min_figure) and { n } or split_pow2(n)
             if #pieces <= 1 then
                 self:append_value_entry(n, nil, parent_tuplet, total, container_duration, parent_min_figure, true)
             else

@@ -293,7 +293,8 @@ local function assert_compound_eighth_isolated_runs_use_flags()
     local beam_glyph = render_utils.getGlyph(constants.TUPLET_BEAM_GLYPH)
     assert_true(beam_glyph and beam_glyph.d, "6/8 isolated runs: expected beam glyph path")
     local beam_count = count_substring(svg, beam_glyph.d)
-    assert_true(beam_count == 1, "6/8 isolated runs: expected only one beamed run (the contiguous 1 1 1 group)")
+    -- A beam strip tiles this glyph across its width, so one run uses multiple paths.
+    assert_true(beam_count >= 1, "6/8 isolated runs: expected a beam for the contiguous 1 1 1 group")
 
     local flag_up = render_utils.getGlyph("flag8thUp")
     local flag_down = render_utils.getGlyph("flag8thDown")
@@ -612,7 +613,7 @@ local function assert_three_four_single_span_dotted_half()
     assert_true(measure_obj.entries[1].dot_level == 1, "3/4 single span: expected one dot")
 end
 
-local function assert_six_eight_single_span_dotted_half()
+local function assert_six_eight_single_span_ternary_groups()
     local score = bhack.score.Score:new(320, 80)
     score:set_material({
         clef = "g",
@@ -631,10 +632,13 @@ local function assert_six_eight_single_span_dotted_half()
 
     local measure_obj = score.ctx.measures[1]
     assert_true(measure_obj ~= nil, "6/8 single span: expected measure")
-    assert_true(#(measure_obj.entries or {}) == 1, "6/8 single span: expected one entry")
-    assert_true(measure_obj.entries[1].value == 6, "6/8 single span: expected normalized value 6")
-    assert_true(measure_obj.entries[1].notehead == "noteheadHalf", "6/8 single span: expected half notehead")
-    assert_true(measure_obj.entries[1].dot_level == 1, "6/8 single span: expected one dot")
+    assert_true(#(measure_obj.entries or {}) == 2, "6/8 single span: expected two ternary groups")
+    for i, entry in ipairs(measure_obj.entries) do
+        assert_true(entry.value == 3, "6/8 single span: expected normalized value 3")
+        assert_true(entry.figure == 4, "6/8 single span: expected quarter-note figure")
+        assert_true(entry.dot_level == 1, "6/8 single span: expected one dot")
+        assert_true((entry.is_tied or false) == (i == 1), "6/8 single span: expected a tie between groups")
+    end
 end
 
 local function assert_three_four_compressed_quads_draw_tuplet_label()
@@ -853,7 +857,7 @@ assert_nested_9_8_tail_half_note()
 assert_tail_half_after_nested_triplet_with_short_chords()
 assert_additive_single_span_split()
 assert_three_four_single_span_dotted_half()
-assert_six_eight_single_span_dotted_half()
+assert_six_eight_single_span_ternary_groups()
 assert_three_four_compressed_quads_draw_tuplet_label()
 assert_three_four_simple_four_to_three_noteheads()
 assert_five_four_six_five_notehead_scaling()
