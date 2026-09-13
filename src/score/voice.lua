@@ -209,18 +209,19 @@ function Voice:new(material)
 	obj.chords = {}
 	obj.current_measure_position = 1
 
-	local t = obj.material.tree or {}
-	local current_time_sig = { 4, 4 }
-	for i, m in ipairs(t) do
-		if #m == 2 then
-			local ts = m[1]
-			local tree = m[2]
-			current_time_sig = { ts[1], ts[2] }
-			table.insert(obj.measures, measure.Measure:new(current_time_sig, tree, i))
-		else
-			table.insert(obj.measures, measure.Measure:new(current_time_sig, m[1], i))
-		end
-	end
+    local t = obj.material.tree or {}
+    local current_time_sig = { 4, 4 }
+    for i, m in ipairs(t) do
+        if #m == 2 then
+            local ts = m[1]
+            local tree = m[2]
+            current_time_sig = { ts[1], ts[2] }
+            table.insert(obj.measures, measure.Measure:new(current_time_sig, tree, i))
+        else
+            table.insert(obj.measures, measure.Measure:new(current_time_sig, m[1], i))
+        end
+        local dbg = obj.measures[#obj.measures]
+    end
 
 	obj.tuplets = {}
 	obj.max_tuplet_depth = 0
