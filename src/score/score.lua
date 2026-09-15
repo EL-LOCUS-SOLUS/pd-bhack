@@ -8,9 +8,44 @@ local render_staff = require("score.rendering.staff")
 local render_time = require("score.rendering.time")
 local musicxml = require("score.utils.musicxml")
 
+local json = require("score.json")
+
 local Score = {}
 Score.__index = Score
 M.Score = Score
+
+-- Build an inspection snapshot; JSON cannot directly represent Lua table cycles.
+-- Repeated tables use JSON Pointer references to their first occurrence.
+local function context_snapshot(value, seen, path)
+	if type(value) ~= "table" then
+		return value
+	end
+	seen = seen or {}
+	path = path or "#"
+	if seen[value] then
+		return { ["$ref"] = seen[value] }
+	end
+	seen[value] = path
+
+	local count, is_array = 0, true
+	for key in pairs(value) do
+		count = count + 1
+		if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
+			is_array = false
+		end
+	end
+	is_array = is_array and count == #value
+
+	local result = {}
+	for key, item in pairs(value) do
+		assert(type(key) == "string" or type(key) == "number", "Unsupported context key type")
+		local output_key = is_array and key or tostring(key)
+		local token = tostring(is_array and key - 1 or key):gsub("~", "~0"):gsub("/", "~1")
+		assert(result[output_key] == nil, "Conflicting context keys: " .. tostring(key))
+		result[output_key] = context_snapshot(item, seen, path .. "/" .. token)
+	end
+	return result
+end
 
 -- ─────────────────────────────────────
 local function entry_duration_whole(entry)
@@ -545,6 +580,14 @@ function Score:getsvg()
 			self.ctx.height
 		)
 	)
+
+	-- save ctx
+	local context_json = json.encode(context_snapshot(self.ctx))
+	local file = assert(io.open("ctx.json", "w"))
+	local written, write_err = file:write(context_json)
+	local closed, close_err = file:close()
+	assert(written, write_err)
+	assert(closed, close_err)
 
 	local staff_svg = render_staff.draw_staff(self.ctx)
 	if staff_svg then

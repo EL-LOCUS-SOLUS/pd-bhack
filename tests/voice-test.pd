@@ -93,7 +93,8 @@
 #X msg 248 489 list ((4 4) ((2 (1 -1 1)) 2));
 #X msg 258 510 list ((3 4) (6 3 3));
 #X msg 260 534 list ((6 8) (3 (3 (1 1 1))));
-#X msg 232 11 list ((4 4) (5 3));
+#X msg 238 24 list ((4 4) (5 3));
+#X msg 223 3 list ((6 8) (6 (6 (2 2 2))));
 #X connect 0 0 8 0;
 #X connect 1 0 8 0;
 #X connect 2 0 8 0;
@@ -119,6 +120,7 @@
 #X connect 23 0 8 0;
 #X connect 24 0 8 0;
 #X connect 25 0 8 0;
+#X connect 26 0 8 0;
 #X restore 18 193 pd 12/04;
 #X f 12;
 #X obj 216 187 bhack.define;
