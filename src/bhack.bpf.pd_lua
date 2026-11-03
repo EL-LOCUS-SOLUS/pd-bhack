@@ -136,7 +136,7 @@ function b_bpf:in_1_reload()
 	package.loaded.bhack = nil
 	bhack = nil
 	for k, _ in pairs(package.loaded) do
-		if k == "score/score" or k == "score/utils" then
+		if k:match("^score[/%.]") then
 			package.loaded[k] = nil
 		end
 	end

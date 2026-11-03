@@ -1,7 +1,7 @@
 local M = {}
 
 -- External helpers (from your environment). Keep as-is.
-local utils = require("score/utils")
+local utils = require("score/functions/utils")
 
 -- Just for automatic testing environments
 if not _G.pd then

@@ -1,7 +1,7 @@
-local utils = require("score/utils")
-local internal_utils = require("score/utils/init")
-local rhythm = require("score.rhythm")
-local constants = require("score.constants")
+local utils = require("score/functions/utils")
+local internal_utils = require("score/functions/pitch")
+local rhythm = require("score/functions/rhythm")
+local constants = require("score/score-objects/constants")
 
 local Note = {}
 Note.__index = Note

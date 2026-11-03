@@ -1,5 +1,5 @@
-local utils = require("score/utils")
-local render_utils = require("score.rendering.utils")
+local utils = require("score/functions/utils")
+local render_utils = require("score/draw/utils")
 
 local function draw_staff(ctx)
 	utils.log("draw_staff", 2)

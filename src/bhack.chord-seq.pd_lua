@@ -76,13 +76,19 @@ end
 
 -- ─────────────────────────────────────
 function b_chords:clear_playbar()
-	for i = 1, #self.previous_entry.chord.notes do
-		local pitchname = self.previous_entry.chord.notes[i].raw
-		local midi = n2m(pitchname)
-		self:outlet(1, "list", { midi, 0 })
+	local chord = self.previous_entry and self.previous_entry.chord
+	if chord and chord.notes then
+		for i = 1, #chord.notes do
+			local pitchname = chord.notes[i].raw
+			local midi = n2m(pitchname)
+			self:outlet(1, "list", { midi, 0 })
+		end
 	end
 
 	self.previous_entry = nil
+	self.entry = nil
+	self.last_draw_position = nil
+	self.last_valid_position = 0
 
 	-- sinal de término
 	self.is_playing = false
@@ -99,7 +105,11 @@ function b_chords:playing_clock()
 	if self.playbar_position > self.last_onset then
 		self.previous_entry = self.entry
 		self.entry = nil
-		self.clear_after_play:delay(self.previous_entry.duration)
+		if self.previous_entry then
+			self.clear_after_play:delay(self.previous_entry.duration or 0)
+		else
+			self:clear_playbar()
+		end
 		return
 	end
 
@@ -275,6 +285,10 @@ end
 -- ─────────────────────────────────────
 function b_chords:in_1_play()
 	self.onsets, self.last_onset = self.Score:get_onsets()
+	self.entry = nil
+	self.previous_entry = nil
+	self.last_draw_position = nil
+	self.last_valid_position = 0
 	self.playbar_position = -1
 	self.playclock:delay(1)
 	self.is_playing = true
@@ -386,7 +400,7 @@ function b_chords:in_1_reload()
 	package.loaded.bhack = nil
 	bhack = nil
 	for k, _ in pairs(package.loaded) do
-		if k == "score/score" or k == "score/utils" then
+		if k:match("^score[/%.]") then
 			package.loaded[k] = nil
 		end
 	end

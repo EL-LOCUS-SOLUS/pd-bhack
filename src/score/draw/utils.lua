@@ -1,5 +1,5 @@
-local constants = require("score.constants")
-local utils = require("score/utils")
+local constants = require("score/score-objects/constants")
+local utils = require("score/functions/utils")
 
 local function getGlyph(name)
 	utils.log("getGlyph", 2)

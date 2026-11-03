@@ -1,6 +1,6 @@
-local constants = require("score.constants")
-local geometry = require("score.geometry")
-local utils = require("score/utils")
+local constants = require("score/score-objects/constants")
+local geometry = require("score/functions/geometry")
+local utils = require("score/functions/utils")
 
 local STEM_DIRECTION_THRESHOLDS = {
 	g = { letter = "B", octave = 4 },

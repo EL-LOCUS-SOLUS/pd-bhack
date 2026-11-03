@@ -1,6 +1,6 @@
-local utils = require("score/utils")
-local notes = require("score.notes")
-local rhythm = require("score.rhythm")
+local utils = require("score/functions/utils")
+local notes = require("score/score-objects/note")
+local rhythm = require("score/functions/rhythm")
 
 local Measure = {}
 Measure.__index = Measure

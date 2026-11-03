@@ -1,5 +1,5 @@
-local utils = require("score/utils")
-local render_utils = require("score.rendering.utils")
+local utils = require("score/functions/utils")
+local render_utils = require("score/draw/utils")
 
 local function compute_time_signature_metrics(ctx, numerator, denominator)
 	utils.log("compute_time_signature_metrics", 2)

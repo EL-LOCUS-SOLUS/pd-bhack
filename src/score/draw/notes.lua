@@ -1,12 +1,12 @@
-local constants = require("score.constants")
-local utils = require("score/utils")
-local geometry = require("score.geometry")
-local rhythm = require("score.rhythm")
-local internal_utils = require("score/utils/init")
-local render_utils = require("score.rendering.utils")
-local stems = require("score.rendering.stems")
-local ties = require("score.rendering.ties")
-local tuplets = require("score.rendering.tuplets")
+local constants = require("score/score-objects/constants")
+local utils = require("score/functions/utils")
+local geometry = require("score/functions/geometry")
+local rhythm = require("score/functions/rhythm")
+local internal_utils = require("score/functions/pitch")
+local render_utils = require("score/draw/utils")
+local stems = require("score/draw/stems")
+local ties = require("score/draw/ties")
+local tuplets = require("score/draw/tuplets")
 
 local function notehead_origin_options(glyph_name)
 	local anchors = constants.Bravura_Metadata
@@ -336,6 +336,66 @@ local function render_rest_dots(state, rest, rest_metrics)
 	return state
 end
 
+local function metadata_vertical_offset(meta, glyph_name)
+	local boxes = meta and meta.glyphBBoxes
+	local glyph_box = boxes and boxes[glyph_name]
+	if not glyph_box or not glyph_box.bBoxNE or not glyph_box.bBoxSW then
+		return nil
+	end
+	local center = ((glyph_box.bBoxNE[2] or 0) + (glyph_box.bBoxSW[2] or 0)) * 0.5
+	local anchors = meta.glyphsWithAnchors and meta.glyphsWithAnchors[glyph_name]
+	if not anchors then
+		return 0
+	end
+
+	local top_y = math.max(
+		anchors.cutOutNE and anchors.cutOutNE[2] or -math.huge,
+		anchors.cutOutNW and anchors.cutOutNW[2] or -math.huge
+	)
+	local bottom_y = math.min(
+		anchors.cutOutSE and anchors.cutOutSE[2] or math.huge,
+		anchors.cutOutSW and anchors.cutOutSW[2] or math.huge
+	)
+	if top_y == -math.huge or bottom_y == math.huge then
+		return 0
+	end
+	return center - (top_y + bottom_y) * 0.5
+end
+
+local function arrow_accidental_vertical_offset(meta, glyph_name, accidental_key)
+	if not accidental_key or not accidental_key:find("[%^v]") then
+		return nil
+	end
+
+	-- Flat glyphs have an asymmetric stem and are aligned by their cutout
+	-- anchors. Bounding-box centering makes their note-facing body too low.
+	if accidental_key:sub(1, 1) == "b" then
+		return metadata_vertical_offset(meta, glyph_name)
+	end
+
+	local base_glyph = accidental_key:sub(1, 1) == "#" and "accidentalSharp" or "accidentalNatural"
+	local boxes = meta and meta.glyphBBoxes
+	local glyph_box = boxes and boxes[glyph_name]
+	local base_box = boxes and boxes[base_glyph]
+	if not glyph_box or not base_box then
+		return nil
+	end
+
+	local function center_y(box)
+		if not box.bBoxNE or not box.bBoxSW then
+			return nil
+		end
+		return ((box.bBoxNE[2] or 0) + (box.bBoxSW[2] or 0)) * 0.5
+	end
+
+	local glyph_center = center_y(glyph_box)
+	local base_center = center_y(base_box)
+	if not glyph_center or not base_center then
+		return nil
+	end
+	return glyph_center - base_center
+end
+
 local function render_accidents(ctx, chord, current_x, layout_right)
 	utils.log("render_accidents", 2)
 	local notes = chord.notes
@@ -390,43 +450,12 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 
 		local offset = 0
 		local meta = constants.Bravura_Metadata
-		if meta and meta.glyphBBoxes and meta.glyphBBoxes[glyph_name] then
-			local bbox = meta.glyphBBoxes[glyph_name]
-			if bbox and bbox.bBoxNE and bbox.bBoxSW then
-				local center_y = ((bbox.bBoxNE[2] or 0) + (bbox.bBoxSW[2] or 0)) * 0.5
-				local anchors = meta.glyphsWithAnchors and meta.glyphsWithAnchors[glyph_name]
-				if anchors then
-					local top_y, bottom_y
-					local function consider(entry, selector)
-						utils.log("consider", 2)
-						if not entry then
-							return
-						end
-						local y_val = entry[2]
-						if not y_val then
-							return
-						end
-						if selector == "top" then
-							if not top_y or y_val > top_y then
-								top_y = y_val
-							end
-						else
-							if not bottom_y or y_val < bottom_y then
-								bottom_y = y_val
-							end
-						end
-					end
-					consider(anchors.cutOutNE, "top")
-					consider(anchors.cutOutNW, "top")
-					consider(anchors.cutOutSE, "bottom")
-					consider(anchors.cutOutSW, "bottom")
-					if top_y and bottom_y then
-						local desired = (top_y + bottom_y) * 0.5
-						offset = center_y - desired
-					end
-				end
-			end
+		local arrow_offset = arrow_accidental_vertical_offset(meta, glyph_name, accidental_key)
+		if arrow_offset ~= nil then
+			acc_cfg.auto_vertical_offsets[glyph_name] = arrow_offset
+			return arrow_offset
 		end
+		offset = metadata_vertical_offset(meta, glyph_name) or 0
 
 		if accidental_key and constants.NATURAL_ACCIDENTAL_KEYS[accidental_key] then
 			local step_shift = ctx.accidentals and ctx.accidentals.natural_step_shift
@@ -1284,4 +1313,5 @@ return {
 	render_accidents = render_accidents,
 	render_rests = render_rests,
 	prepare_chord_notes = prepare_chord_notes,
+	arrow_accidental_vertical_offset = arrow_accidental_vertical_offset,
 }

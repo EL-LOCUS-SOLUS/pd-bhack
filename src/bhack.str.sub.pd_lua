@@ -77,7 +77,7 @@ function b_subst:in_1_reload()
 	package.loaded.bhack = nil
 	bhack = nil
 	for k, _ in pairs(package.loaded) do
-		if k == "score/score" or k == "score/utils" or k == "dddd" then
+		if k:match("^score[/%.]") or k == "dddd" then
 			package.loaded[k] = nil
 		end
 	end

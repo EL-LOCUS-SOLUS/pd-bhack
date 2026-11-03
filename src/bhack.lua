@@ -2,7 +2,7 @@ local M = {}
 
 local dddd = require("dddd")
 local score = require("score/score")
-local utils = require("score/utils")
+local utils = require("score/functions/utils")
 
 _G.bhack_outlets = _G.bhack_outlets or {}
 _G.bhack_global_var = _G.bhack_global_var or {}

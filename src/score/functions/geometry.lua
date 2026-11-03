@@ -1,5 +1,5 @@
-local M = require("score.constants")
-local utils = require("score/utils")
+local M = require("score/score-objects/constants")
+local utils = require("score/functions/utils")
 
 local function diatonic_value(steps_table, letter, octave)
 	utils.log("diatonic_value", 2)

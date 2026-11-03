@@ -1,8 +1,8 @@
-local constants = require("score.constants")
-local utils = require("score/utils")
-local rhythm = require("score.rhythm")
-local render_utils = require("score.rendering.utils")
-local stems = require("score.rendering.stems")
+local constants = require("score/score-objects/constants")
+local utils = require("score/functions/utils")
+local rhythm = require("score/functions/rhythm")
+local render_utils = require("score/draw/utils")
+local stems = require("score/draw/stems")
 
 local render_tuplet_draw_request
 local flush_pending_tuplet_draws

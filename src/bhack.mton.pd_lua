@@ -34,7 +34,15 @@ for fifths = -7, 7 do
 	signatures[#signatures + 1] = signature_for_fifths(fifths)
 end
 
-local function nearest_signature(midis)
+local function converted_parts(midi, temperament)
+	local converted = m2n(midi, temperament)
+	local letter, accidental, microtone, octave = converted:match("^([A-G])([#b]?)(.-)(%-?%d+)$")
+	local offset = accidental == "b" and -1 or (accidental == "#" and 1 or 0)
+	local base_midi = natural_pc[letter] + offset + (tonumber(octave) + 1) * 12
+	return converted, base_midi, microtone
+end
+
+local function nearest_signature(midis, temperament)
 	local present = {}
 	for i, midi in ipairs(midis) do
 		if type(midi) ~= "number" then
@@ -42,7 +50,8 @@ local function nearest_signature(midis)
 		end
 		-- Key signatures describe semitone pitch classes. Microtonal alterations
 		-- are retained in the output but do not affect signature discovery.
-		present[math.floor(midi) % 12] = true
+		local _, base_midi = converted_parts(midi, temperament)
+		present[base_midi % 12] = true
 	end
 
 	local best
@@ -62,25 +71,23 @@ local function nearest_signature(midis)
 end
 
 local function spell_midi(midi, signature, temperament)
-	local pc = math.floor(midi) % 12
+	local converted, base_midi, microtone = converted_parts(midi, temperament)
+	local pc = base_midi % 12
 	local name = signature.names[pc]
 	if not name then
-		return m2n(midi, temperament)
+		return converted
 	end
 
-	-- Let the existing converter determine octave and any microtonal suffix,
-	-- then replace only its enharmonic pitch-class spelling.
-	local converted = m2n(midi, temperament)
-	local microtone = converted:match("^[A-G][#b]?(.-)%-?%d+$") or ""
+	-- Replace only the enharmonic spelling chosen by the key signature.
 	local letter = name:sub(1, 1)
 	local accidental = name:sub(2, 2)
 	local offset = accidental == "b" and -1 or (accidental == "#" and 1 or 0)
-	local octave = ((math.floor(midi) - natural_pc[letter] - offset) / 12) - 1
+	local octave = ((base_midi - natural_pc[letter] - offset) / 12) - 1
 	return name .. microtone .. string.format("%d", octave)
 end
 
 local function key_signature_names(midis, temperament)
-	local signature, err = nearest_signature(midis)
+	local signature, err = nearest_signature(midis, temperament)
 	if err or not signature then return nil, err end
 	local converted = {}
 	for i, midi in ipairs(midis) do
@@ -173,7 +180,7 @@ function m2n_dddd:in_1_dddd(atoms)
 		end
 		collect(data)
 		local err
-		signature, err = nearest_signature(midis)
+		signature, err = nearest_signature(midis, self.temperament)
 		if err then
 			self:error("[bhack.mton] " .. err)
 			return

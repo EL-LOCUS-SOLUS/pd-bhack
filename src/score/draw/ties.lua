@@ -1,4 +1,4 @@
-local constants = require("score.constants")
+local constants = require("score/score-objects/constants")
 
 local function note_pitch_key(note)
 	if not note then

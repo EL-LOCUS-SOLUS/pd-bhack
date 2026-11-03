@@ -85,12 +85,12 @@ local function accidental_value(acc)
 
 	local count_up = select(2, acc:gsub("%^", ""))
 	if count_up > 0 then
-		value = value + 0.13 * count_up
+		value = value + 0.125 * count_up
 	end
 
 	local count_down = select(2, acc:gsub("v", ""))
 	if count_down > 0 then
-		value = value - 0.13 * count_down
+		value = value - 0.125 * count_down
 	end
 
 	-- quarter-tones
@@ -121,50 +121,37 @@ end
 -- ─────────────────────────────────────
 function M.m2n(midi, temperament)
 	temperament = temperament or "12edo"
-	local steps = 12
-	if temperament == "24edo" then
-		steps = 24
-	end
-	if temperament == "96edo" then
-		steps = 96
+	local subdivisions = ({ ["12edo"] = 1, ["24edo"] = 2, ["96edo"] = 8 })[temperament]
+	if not subdivisions then
+		error("Unrecognized temperament " .. temperament)
 	end
 
-	local step = math.floor(midi % 12)
-	local cents = (midi - math.floor(midi)) * 100
-	local octave = math.floor(midi / 12) - 1
+	-- Quantize to the temperament, then use the closest semitone as the
+	-- written note. This keeps pitches near E written as E, rather than D#
+	-- followed by several downward alterations.
+	local edo_step = math.floor(midi * subdivisions + 0.5)
+	local lower_midi = math.floor(edo_step / subdivisions)
+	local remainder = edo_step - lower_midi * subdivisions
+	local base_midi = lower_midi
+	if remainder > subdivisions / 2 then
+		base_midi = base_midi + 1
+		remainder = remainder - subdivisions
+	end
+
+	local step = base_midi % 12
+	local octave = math.floor(base_midi / 12) - 1
 	local classname = class_names[step]
 	local classname_root = class_names_roots[classname]
+	local alter = (step - classname_root == 1) and "#" or ""
 
-	local alter = ""
-	if steps == 12 then
-		alter = (step - classname_root == 1) and "#" or ""
-	elseif steps == 24 then
-		alter = (step - classname_root == 1) and "#" or ""
-		if cents > 25 and cents < 75 then
-			alter = alter .. "+"
+	if temperament == "24edo" and remainder == 1 then
+		alter = alter .. "+"
+	elseif temperament == "96edo" then
+		if remainder > 0 then
+			alter = alter .. ((remainder == 4) and "+" or string.rep("^", remainder))
+		elseif remainder < 0 then
+			alter = alter .. string.rep("v", -remainder)
 		end
-	elseif steps == 96 then
-		local classalter = (step - classname_root == 1) and "#" or ""
-		if cents < 12.5 then
-			alter = ""
-		elseif cents < 25 then
-			alter = "^"
-		elseif cents < 37.5 then
-			alter = "^^"
-		elseif cents < 50 then
-			alter = "^^^"
-		elseif cents < 62.5 then
-			alter = "+"
-		elseif cents < 75 then
-			alter = "v"
-		elseif cents < 87.5 then
-			alter = "vv"
-		else
-			alter = "vvv"
-		end
-		alter = classalter .. alter
-	else
-		error("Unrecognized temperament " .. temperament)
 	end
 
 	return string.format("%s%s%d", classname, alter, octave)

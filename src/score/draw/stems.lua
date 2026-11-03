@@ -1,6 +1,6 @@
-local utils = require("score/utils")
-local rhythm = require("score.rhythm")
-local render_utils = require("score.rendering.utils")
+local utils = require("score/functions/utils")
+local rhythm = require("score/functions/rhythm")
+local render_utils = require("score/draw/utils")
 
 -- ─────────────────────────────────────
 local function should_render_stem(note)

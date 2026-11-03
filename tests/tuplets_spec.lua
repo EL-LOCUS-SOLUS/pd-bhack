@@ -1,9 +1,9 @@
 package.path = package.path .. ";./src/?.lua;./src/?/init.lua"
 
 local bhack = require("bhack")
-local rhythm = require("score.rhythm")
-local constants = require("score.constants")
-local render_utils = require("score.rendering.utils")
+local rhythm = require("score/functions/rhythm")
+local constants = require("score/score-objects/constants")
+local render_utils = require("score/draw/utils")
 
 local tree = {{
     { 4, 4 },

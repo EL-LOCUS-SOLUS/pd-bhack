@@ -1,5 +1,5 @@
-local utils = require("score/utils")
-local render_utils = require("score.rendering.utils")
+local utils = require("score/functions/utils")
+local render_utils = require("score/draw/utils")
 
 local function draw_barline(ctx, x, glyph_name)
 	utils.log("draw_barline", 2)

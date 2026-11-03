@@ -1,7 +1,7 @@
-local M = require("score.constants")
-local slaxml = require("score/slaxml")
-local json = require("score/json")
-local utils = require("score/utils")
+local M = require("score/score-objects/constants")
+local slaxml = require("score/compatibility/slaxml")
+local json = require("score/compatibility/json")
+local utils = require("score/functions/utils")
 
 local FontLoaded = {}
 FontLoaded.__index = FontLoaded
@@ -16,13 +16,14 @@ function FontLoaded.readGlyphNames()
 	if M.Bravura_Glyphnames and M.Bravura_Metadata then
 		return
 	end
-	local glyphName = utils.script_path() .. "/glyphnames.json"
+	local resources = utils.script_path() .. "../resources/"
+	local glyphName = resources .. "glyphnames.json"
 	local f = assert(io.open(glyphName, "r"), "Bravura glyphnames.json not found")
 	local glyphJson = f:read("*all")
 	f:close()
 	M.Bravura_Glyphnames = json.decode(glyphJson)
 
-	local metaName = utils.script_path() .. "/bravura_metadata.json"
+	local metaName = resources .. "bravura_metadata.json"
 	f = assert(io.open(metaName, "r"), "Bravura metadata not found")
 	glyphJson = f:read("*all")
 	f:close()
@@ -33,7 +34,7 @@ function FontLoaded.readFont()
 	if M.Bravura_Glyphs and M.Bravura_Font then
 		return
 	end
-	local svgfile = utils.script_path() .. "/Bravura.svg"
+	local svgfile = utils.script_path() .. "../resources/Bravura.svg"
 	local f = assert(io.open(svgfile, "r"), "Bravura.svg not found")
 	local xml = f:read("*all")
 	f:close()

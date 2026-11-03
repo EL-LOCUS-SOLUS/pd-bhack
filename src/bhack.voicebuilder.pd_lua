@@ -1,6 +1,6 @@
 local b_voice = pd.Class:new():register("bhack.voicebuilder")
 local bhack = require("bhack")
-local constants = require("score.constants")
+local constants = require("score/score-objects/constants")
 
 --╭─────────────────────────────────────╮
 --│           Object Creator            │
@@ -440,7 +440,7 @@ function b_voice:in_1_reload()
 	package.loaded.bhack = nil
 	bhack = nil
 	for k, _ in pairs(package.loaded) do
-		if k == "score/score" or k == "score/utils" then
+		if k:match("^score[/%.]") then
 			package.loaded[k] = nil
 		end
 	end
