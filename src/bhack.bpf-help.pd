@@ -1,4 +1,4 @@
-#N canvas 0 0 925 1131 10;
+#N canvas 0 0 489 553 10;
 #X declare -lib xlab;
 #X text 110 24 Plot dddd;
 #X obj 4 323 bhack.bpf;

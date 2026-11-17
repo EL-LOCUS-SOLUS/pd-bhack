@@ -1,4 +1,4 @@
-#N canvas 0 0 925 1131 10;
+#N canvas 0 0 671 502 10;
 #X declare -lib elses;
 #X declare -lib xlab;
 #X obj 529 6 declare -lib elses;
