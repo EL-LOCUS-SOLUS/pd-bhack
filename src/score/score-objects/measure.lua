@@ -86,7 +86,7 @@ local function normalize_single_measure_span_tree(time_sig, tree)
 	end
 
 	if numerator <= 4 or (numerator % 2) == 0 then
-		return { (first < 0) and (-numerator) or numerator }
+		return { (first < 0) and -numerator or numerator }
 	end
 
 	local groups = additive_quarter_groups(numerator)
@@ -203,6 +203,51 @@ function Measure:append_value_entry(
 	is_tied
 )
 	local value = math.abs(raw_value or 0)
+
+	if value > 0 and value == math.floor(value) then
+		local remaining = value
+		local parts = {}
+
+		while remaining > 0 do
+			local base = utils.floor_pow2(remaining)
+			local part = base
+			local dot = base / 2
+
+			while dot >= 1 and part + dot <= remaining do
+				part = part + dot
+				dot = dot / 2
+			end
+
+			parts[#parts + 1] = part
+			remaining = remaining - part
+		end
+
+		if #parts > 1 then
+			local first
+
+			for i, part in ipairs(parts) do
+				local signed = raw_value < 0 and -part or part
+				local tie = raw_value > 0 and (i < #parts or is_tied)
+
+				local element = self:append_value_entry(
+					signed,
+					inline_chord,
+					parent_tuplet,
+					total,
+					container_duration,
+					min_figure,
+					tie
+				)
+
+				if not first then
+					first = element
+				end
+			end
+
+			return first
+		end
+	end
+
 	if total == 0 then
 		total = 1
 	end
@@ -282,8 +327,7 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 				tuplet_min_figure = math.max(parent_min_figure, 4)
 			end
 
-			local is_top_measure_tuplet =
-				(parent_tuplet == nil)
+			local is_top_measure_tuplet = (parent_tuplet == nil)
 				and self.is_measure_tuplet
 				and (tonumber(self.time_sig and self.time_sig[1]) == tonumber(up_value))
 			if is_top_measure_tuplet then
