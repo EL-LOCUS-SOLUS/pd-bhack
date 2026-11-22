@@ -152,7 +152,13 @@ local function beam_figure_for_chord(chord)
 
 	if figure and figure > 0 then
 		-- Keep floor-based behavior; only lift values close to the eighth boundary.
-		if figure < 8 and raw_figure and raw_figure >= 6 and raw_figure < 8 and (not base_figure or base_figure > 4) then
+		if
+			figure < 8
+			and raw_figure
+			and raw_figure >= 6
+			and raw_figure < 8
+			and (not base_figure or base_figure > 4)
+		then
 			return 8
 		end
 		return figure
@@ -512,6 +518,11 @@ function Tuplet:new(up_value, rhythms, parent_context)
 	obj.duration = container_duration * (obj.up_value / parent_sum)
 	obj.tuplet_sum = rhythm_sum(obj.rhythms)
 
+	local label_reference = obj.up_value
+	if utils.is_power_of_two(obj.up_value) then
+		label_reference = math.max(obj.up_value, utils.floor_pow2(obj.tuplet_sum))
+	end
+
 	if not obj.is_beam_group_only then
 		-- pd.post(parent_context.meter_type)
 		-- pd.post(up_value)
@@ -552,7 +563,8 @@ function Tuplet:new(up_value, rhythms, parent_context)
 			end
 
 			if not obj.require_draw then
-				local irregular_is_tuplet = compute_tuplet_label(up_value, obj.tuplet_sum, parent_context.measure)
+				local irregular_is_tuplet =
+					compute_tuplet_label(label_reference, obj.tuplet_sum, parent_context.measure)
 				if irregular_is_tuplet then
 					obj.require_draw = true
 				end
@@ -576,7 +588,7 @@ function Tuplet:new(up_value, rhythms, parent_context)
 	if obj.is_beam_group_only then
 		obj.label_string = nil
 	else
-		local _, label = compute_tuplet_label(obj.up_value, obj.tuplet_sum, parent_context.measure)
+		local _, label = compute_tuplet_label(label_reference, obj.tuplet_sum, parent_context.measure)
 		if not label and obj.require_draw and obj.up_value == 1 and obj.depth == 1 then
 			local measure_numerator = parent_context
 				and parent_context.measure
