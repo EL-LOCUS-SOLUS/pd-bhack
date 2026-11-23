@@ -314,6 +314,69 @@ local function rhythm_value(entry)
 	return 0
 end
 
+local function normalize_decimal_level(entries)
+	local has_decimal = false
+
+	for _, entry in ipairs(entries) do
+		local value = rhythm_value(entry)
+
+		if value ~= math.floor(value) then
+			has_decimal = true
+			break
+		end
+	end
+
+	if not has_decimal then
+		return entries, false
+	end
+
+	local scale = 1
+
+	for _ = 1, 10 do
+		local result = {}
+		local sum = 0
+		local exact = true
+
+		for i, entry in ipairs(entries) do
+			local value = rhythm_value(entry)
+			local scaled = value * scale
+			local integer = math.floor(math.abs(scaled) + 0.5)
+
+			if value < 0 then
+				integer = -integer
+			end
+
+			local epsilon = 1e-6 * math.max(1, math.abs(scaled))
+
+			if math.abs(scaled - integer) > epsilon or (value ~= 0 and integer == 0) then
+				exact = false
+			end
+
+			sum = sum + math.abs(integer)
+
+			if is_tuplet_entry(entry) then
+				result[i] = { integer, entry[2] }
+			elseif type(entry) == "string" then
+				result[i] = tostring(integer) .. "_"
+			else
+				result[i] = integer
+			end
+		end
+
+		if sum > 1024 then
+			break
+		end
+
+		if exact then
+			return result, true
+		end
+
+		scale = scale * 10
+	end
+
+	error("Decimal rhythm exceeds resolution of 1024")
+end
+
 local function rhythm_sum(entries)
 	utils.log("rhythm_sum", 2)
 	local sum = 0
@@ -451,7 +514,7 @@ local function figure_spacing_multiplier(duration_whole)
 		return 0
 	end
 
-	local min_duration = 1 / 256
+	local min_duration = 1 / 1024
 	if value <= min_duration + 1e-9 then
 		return 0
 	end
@@ -648,6 +711,7 @@ return {
 	is_pitchlist = is_pitchlist,
 	is_tuplet_entry = is_tuplet_entry,
 	rhythm_value = rhythm_value,
+	normalize_decimal_level = normalize_decimal_level,
 	rhythm_sum = rhythm_sum,
 	compute_tuplet_label = compute_tuplet_label,
 	figure_to_notehead = figure_to_notehead,

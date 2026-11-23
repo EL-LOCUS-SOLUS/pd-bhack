@@ -110,6 +110,10 @@ end
 
 -- ─────────────────────────────────────
 function Measure:new(time_sig, tree, number)
+	local has_decimal
+
+	local tree, has_decimal = rhythm.normalize_decimal_level(tree)
+
 	tree = normalize_single_measure_span_tree(time_sig, tree)
 	local measure_sum = 0
 	for i = 1, #tree do
@@ -123,6 +127,7 @@ function Measure:new(time_sig, tree, number)
 	obj.measure_number = number
 	obj.entries = {}
 	obj.measure_sum = measure_sum
+	obj.has_decimal = has_decimal
 	obj:get_measure_min_fig()
 
 	if obj:is_tuplet() then
@@ -178,6 +183,22 @@ end
 
 -- ─────────────────────────────────────
 function Measure:is_tuplet()
+	if self.has_decimal then
+		local actual = self.measure_sum * self.time_sig[2]
+		local normal = self.min_figure * self.time_sig[1]
+
+		local a, b = actual, normal
+
+		while b ~= 0 do
+			a, b = b, a % b
+		end
+
+		self.is_tuplet_flag = actual ~= normal
+		self.tuplet_string = self.is_tuplet_flag and tostring(actual // a) .. ":" .. tostring(normal // a) or nil
+
+		return self.is_tuplet_flag
+	end
+
 	if self:is_compound_eighth_beam_grouping() then
 		self.is_tuplet_flag = false
 		self.tuplet_string = nil
@@ -317,6 +338,10 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 	end
 
 	assert(measure_min_figure, "measure_min_figure is nil")
+	if measure_min_figure > 1024 then
+		error(string.format("Rhythmic resolution exceeds 1/1024: requested 1/%g", measure_min_figure))
+	end
+
 	for _, entry in ipairs(rhythms) do
 		if rhythm.is_tuplet_entry(entry) then
 			local up_value = entry[1]
@@ -347,6 +372,11 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 				meter_type = self.meter_type,
 				measure = self,
 			})
+
+			if is_top_measure_tuplet and self.has_decimal then
+				tuple_obj.label_string = self.tuplet_string
+				tuple_obj.require_draw = self.is_tuplet_flag
+			end
 
 			if tuple_obj.is_beam_group_only then
 				-- Beam-group-only pseudo-tuplets in compound meters should keep the parent base figure.
@@ -462,6 +492,11 @@ function Measure:get_measure_min_fig()
 	local is_tuplet = rhythm.compute_tuplet_label(numerator, effective_sum, self)
 
 	local fig = (effective_sum / numerator) * denominator
+	if self.has_decimal then
+		self.min_figure = math.max(1, utils.floor_pow2(fig))
+		return
+	end
+
 	if is_tuplet then
 		self.min_figure = math.max(1, nearest_pow2(fig))
 	else
