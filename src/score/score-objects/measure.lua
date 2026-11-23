@@ -256,13 +256,18 @@ function Measure:append_value_entry(
 	local duration_whole = container_duration * ratio
 
 	local entry_index = #self.entries + 1
-	local raw_figure = (duration_whole ~= 0) and (1 / duration_whole) or 0
-	local figure = raw_figure
-	if figure > 0 then
-		figure = utils.floor_pow2(figure)
-	end
 
-	local notehead, dot_level = rhythm.figure_to_notehead(value, min_figure)
+	-- local raw_figure = (duration_whole ~= 0) and (1 / duration_whole) or 0
+	-- local figure = raw_figure
+	-- if figure > 0 then
+	-- 	figure = utils.floor_pow2(figure)
+	-- end
+	-- local notehead, dot_level = rhythm.figure_to_notehead(value, min_figure)
+
+	local raw_figure = (duration_whole ~= 0) and (1 / duration_whole) or 0
+	local dot_level, figure = rhythm.compute_figure(value, min_figure)
+	local notehead = rhythm.figure_to_notehead(value, min_figure)
+
 	local entry_meta = {
 		time_sig = self.time_sig,
 		duration_whole = duration_whole,
