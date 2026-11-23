@@ -424,7 +424,10 @@ local function compute_tuplet_label(reference_value, sum_value, measure)
 		denominator = math.max(1, utils.floor_pow2(sum_value))
 	end
 
-	local label = tostring(sum_value) .. ":" .. tostring(denominator)
+	local divisor = utils.gcd(sum_value, denominator)
+	local label = tostring(sum_value // divisor) .. ":" .. tostring(denominator // divisor)
+
+	-- local label = tostring(sum_value) .. ":" .. tostring(denominator)
 	local is_tuplet = true
 	return is_tuplet, label
 end

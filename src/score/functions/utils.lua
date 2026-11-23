@@ -183,6 +183,14 @@ function M.script_path()
 end
 
 -- ─────────────────────────────────────
+function M.gcd(a, b)
+	while b ~= 0 do
+		a, b = b, a % b
+	end
+	return a
+end
+
+-- ─────────────────────────────────────
 function M.table_depth(t)
 	if type(t) ~= "table" then
 		return 0
