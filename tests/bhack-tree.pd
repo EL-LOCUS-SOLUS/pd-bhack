@@ -67,7 +67,7 @@
 #X obj 5 4 declare -lib xlab;
 #X obj 18 266 bhack.define;
 #X msg 159 268 play;
-#N canvas 0 0 532 638 12/04 1;
+#N canvas 0 0 545 664 12/04 1;
 #X msg 85 150 list ((5 4) (1 1 1 1 1 1));
 #X msg 78 130 list ((5 4) (1 1 1));
 #X msg 69 110 list ((6 8) ((1 (1 1)) (1 (1 1)) (1 (1 1))));
@@ -95,6 +95,7 @@
 #X msg 270 538 list [[4 4] [1 [2 [3 5 7]] 1 ]];
 #X msg 302 564 list [[4 4] [1 [2 [3 5 8]] 1 ]];
 #X msg 312 590 list [[4 4] [1 [2 [4 5 7]] 1 ]];
+#X msg 325 616 list [[4 4] [1 [2 [4 5 9]] 1 ]];
 #X connect 0 0 8 0;
 #X connect 1 0 8 0;
 #X connect 2 0 8 0;
@@ -121,6 +122,7 @@
 #X connect 24 0 8 0;
 #X connect 25 0 8 0;
 #X connect 26 0 8 0;
+#X connect 27 0 8 0;
 #X restore 18 193 pd 12/04;
 #X f 12;
 #X obj 248 276 bhack.define;

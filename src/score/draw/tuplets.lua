@@ -225,7 +225,12 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 			extreme = -math.huge
 			for _, entry in ipairs(bucket.notes or {}) do
 				local is_note_break = entry and entry.is_break and entry.note and entry.stem_metrics
-				if entry and (not entry.is_break or is_note_break) and entry.stem_metrics and entry.stem_metrics.bottom_y then
+				if
+					entry
+					and (not entry.is_break or is_note_break)
+					and entry.stem_metrics
+					and entry.stem_metrics.bottom_y
+				then
 					extreme = math.max(extreme, entry.stem_metrics.bottom_y)
 				elseif entry and entry.is_break and entry.y then
 					extreme = math.max(extreme, entry.y)
@@ -238,7 +243,12 @@ local function finalize_tuplet_beam_geometry(state, bucket)
 			extreme = math.huge
 			for _, entry in ipairs(bucket.notes or {}) do
 				local is_note_break = entry and entry.is_break and entry.note and entry.stem_metrics
-				if entry and (not entry.is_break or is_note_break) and entry.stem_metrics and entry.stem_metrics.top_y then
+				if
+					entry
+					and (not entry.is_break or is_note_break)
+					and entry.stem_metrics
+					and entry.stem_metrics.top_y
+				then
 					extreme = math.min(extreme, entry.stem_metrics.top_y)
 				elseif entry and entry.is_break and entry.y then
 					extreme = math.min(extreme, entry.y)
@@ -497,7 +507,17 @@ local function render_tuplet_beams(state, tuplet)
 
 					local stub_length = math.max((state.staff_spacing or 0) * 1.1, metrics.width or 0)
 					local target_x = nil
+
+					local previous = notes[run_start - 1]
+
 					local prefer_prev = stub_entry.is_break == true
+						or (
+							previous
+							and previous.note
+							and previous.note.chord
+							and previous.note.chord.is_tied
+							and previous.parent_tuplet_id == stub_entry.parent_tuplet_id
+						)
 
 					if prefer_prev then
 						for j = run_start - 1, 1, -1 do
