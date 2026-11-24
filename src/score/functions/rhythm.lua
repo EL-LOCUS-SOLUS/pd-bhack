@@ -282,6 +282,45 @@ local function is_tuplet_entry(entry)
 end
 
 -- ─────────────────────────────────────
+local function validate_rhythm_tree(tree, path)
+	path = path or "tree"
+
+	if type(tree) ~= "table" or #tree == 0 then
+		error(path .. ": expected a non-empty rhythm list")
+	end
+
+	for i, entry in ipairs(tree) do
+		local position = string.format("%s[%d]", path, i)
+
+		if type(entry) == "number" then
+			if entry == 0 then
+				error(position .. ": rhythm cannot be zero")
+			end
+		elseif type(entry) == "string" then
+			local value = tonumber(entry:match("^(.-)_$"))
+
+			if not value or value <= 0 then
+				error(position .. ": invalid tied rhythm")
+			end
+		elseif type(entry) == "table" then
+			if not is_tuplet_entry(entry) then
+				error(position .. ": invalid tuplet syntax. " .. "Expected (weight (rhythms))")
+			end
+
+			if entry[1] <= 0 then
+				error(position .. ": tuplet weight must be positive")
+			end
+
+			validate_rhythm_tree(entry[2], position)
+		else
+			error(position .. ": invalid rhythm entry")
+		end
+	end
+
+	return true
+end
+
+-- ─────────────────────────────────────
 -- This returns the value of the rhythm_value
 local function rhythm_value(entry)
 	utils.log("rhythm_value", 2)
@@ -736,6 +775,7 @@ return {
 	is_pitch_atom = is_pitch_atom,
 	is_pitchlist = is_pitchlist,
 	is_tuplet_entry = is_tuplet_entry,
+	validate_rhythm_tree = validate_rhythm_tree,
 	rhythm_value = rhythm_value,
 	normalize_decimal_level = normalize_decimal_level,
 	rhythm_sum = rhythm_sum,

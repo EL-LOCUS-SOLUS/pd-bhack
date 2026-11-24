@@ -110,6 +110,8 @@ end
 
 -- ─────────────────────────────────────
 function Measure:new(time_sig, tree, number)
+	rhythm.validate_rhythm_tree(tree)
+
 	local has_decimal
 	local tree, has_decimal = rhythm.normalize_decimal_level(tree)
 

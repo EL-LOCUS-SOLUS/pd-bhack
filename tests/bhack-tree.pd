@@ -109,7 +109,7 @@
 #X connect 9 0 0 0;
 #X connect 10 0 0 0;
 #X restore 196 466 pd tuplets;
-#N canvas 0 0 321 392 porres 1;
+#N canvas 0 0 370 392 porres 1;
 #X obj 20 344 outlet;
 #X msg 30 60 list ((4 4) ((7 (1 1)) 1));
 #X msg 59 109 list ((6 8) (1.5 1.5));
@@ -117,12 +117,15 @@
 #X msg 87 172 list ((5 4) (1.5 1.5));
 #X msg 102 200 list ((4 4) ((1 (1.5 1.5))));
 #X msg 119 230 list ((5 4) ((1 (1.5 1.5))));
+#X msg 129 254 list ((4 4) (1 (1.5 1.5)));
+#X text 306 255 error;
 #X connect 1 0 0 0;
 #X connect 2 0 0 0;
 #X connect 3 0 0 0;
 #X connect 4 0 0 0;
 #X connect 5 0 0 0;
 #X connect 6 0 0 0;
+#X connect 7 0 0 0;
 #X restore 272 466 pd porres;
 #N canvas 0 0 175 493 crazy 0;
 #X obj 20 453 outlet;
