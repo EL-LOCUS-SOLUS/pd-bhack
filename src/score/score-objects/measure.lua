@@ -344,8 +344,11 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 
 	for _, entry in ipairs(rhythms) do
 		if rhythm.is_tuplet_entry(entry) then
+			-- local up_value = entry[1]
+			-- local child_rhythms = entry[2]
 			local up_value = entry[1]
-			local child_rhythms = entry[2]
+			local child_rhythms = rhythm.normalize_decimal_level(entry[2])
+
 			local tuple_depth = parent_tuplet and ((parent_tuplet.depth or 1) + 1) or 1
 			local tuplet_sum = rhythm.rhythm_sum(child_rhythms)
 			local total_figure_tuplet = parent_min_figure / up_value
