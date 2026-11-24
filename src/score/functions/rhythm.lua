@@ -367,7 +367,33 @@ local function normalize_decimal_level(entries)
 			break
 		end
 
+		-- if exact then
+		-- 	return result, true
+		-- end
+
 		if exact then
+			local divisor = 0
+
+			for _, entry in ipairs(result) do
+				local value = math.abs(rhythm_value(entry))
+
+				while value ~= 0 do
+					divisor, value = value, divisor % value
+				end
+			end
+
+			if divisor > 1 then
+				for i, entry in ipairs(result) do
+					if is_tuplet_entry(entry) then
+						entry[1] = entry[1] // divisor
+					elseif type(entry) == "string" then
+						result[i] = tostring(rhythm_value(entry) // divisor) .. "_"
+					else
+						result[i] = entry // divisor
+					end
+				end
+			end
+
 			return result, true
 		end
 

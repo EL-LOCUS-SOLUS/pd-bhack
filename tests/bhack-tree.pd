@@ -101,6 +101,9 @@
 #X msg 124 612 list [[4 4] [2047 1]];
 #X msg 84 502 list [[4 4] [1022 1]];
 #X msg 66 638 list [[4 4] [1022 -1]];
+#X msg 57 447 list [[4 4] [1.5 1.5 1]];
+#X msg 47 408 list [[4 4] [1.75 1.75 1.5]];
+#X msg 4 381 list [[4 4] [0.3 0.3 0.3]];
 #X connect 0 0 8 0;
 #X connect 1 0 8 0;
 #X connect 2 0 8 0;
@@ -133,6 +136,9 @@
 #X connect 30 0 8 0;
 #X connect 31 0 8 0;
 #X connect 32 0 8 0;
+#X connect 33 0 8 0;
+#X connect 34 0 8 0;
+#X connect 35 0 8 0;
 #X restore 18 193 pd 12/04;
 #X f 12;
 #X obj 248 276 bhack.define;
