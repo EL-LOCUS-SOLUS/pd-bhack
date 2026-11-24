@@ -385,16 +385,38 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 			end
 
 			local is_whole_span_unit_tuplet = (math.abs(tonumber(up_value) or 0) == 1) and (math.abs(total - 1) < 1e-9)
-			if is_whole_span_unit_tuplet then
-				local exact = nil
+			local exact_whole_span = false
 
-				if parent_tuplet == nil and container_duration > 0 then
-					exact = math.tointeger(tuplet_sum / container_duration)
+			if is_whole_span_unit_tuplet then
+				if parent_tuplet == nil then
+					local numerator = self.time_sig[1]
+					local denominator = self.time_sig[2]
+
+					local divisor = utils.gcd(numerator, tuplet_sum * denominator)
+
+					local exact = (tuplet_sum * denominator) // divisor
+					local scale = numerator // divisor
+
+					if utils.is_power_of_two(exact) then
+						for i, entry in ipairs(child_rhythms) do
+							local value = rhythm.rhythm_value(entry) * scale
+
+							if rhythm.is_tuplet_entry(entry) then
+								child_rhythms[i] = { value, entry[2] }
+							elseif type(entry) == "string" then
+								child_rhythms[i] = string.format("%d_", value)
+							else
+								child_rhythms[i] = value
+							end
+						end
+
+						tuplet_sum = tuplet_sum * scale
+						tuplet_min_figure = exact
+						exact_whole_span = true
+					end
 				end
 
-				if exact and utils.is_power_of_two(exact) then
-					tuplet_min_figure = exact
-				else
+				if not exact_whole_span then
 					tuplet_min_figure = math.max(parent_min_figure, 4)
 				end
 			end
@@ -449,6 +471,11 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 				tuple_obj.label_string = string.format("%d:%d", actual // divisor, normal // divisor)
 
 				tuple_obj.require_draw = actual ~= normal
+			end
+
+			if exact_whole_span then
+				tuple_obj.require_draw = false
+				tuple_obj.label_string = nil
 			end
 
 			tuple_obj.parent = parent_tuplet
