@@ -386,6 +386,32 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 				tuplet_min_figure = parent_min_figure
 			end
 
+			if
+				not is_top_measure_tuplet
+				and not tuple_obj.is_beam_group_only
+				and not utils.is_power_of_two(up_value)
+				and utils.is_power_of_two(tuplet_sum)
+			then
+				local lower = utils.floor_pow2(up_value)
+				local upper = lower * 2
+
+				local span = lower
+				if upper - up_value <= up_value - lower then
+					span = upper
+				end
+
+				tuplet_min_figure = math.max(1, parent_min_figure * tuplet_sum / span)
+
+				local actual = tuplet_sum * parent_min_figure
+				local normal = up_value * tuplet_min_figure
+				local divisor = utils.gcd(actual, normal)
+
+				-- tuple_obj.label_string = tostring(actual // divisor) .. ":" .. tostring(normal // divisor)
+				tuple_obj.label_string = string.format("%d:%d", actual // divisor, normal // divisor)
+
+				tuple_obj.require_draw = actual ~= normal
+			end
+
 			tuple_obj.parent = parent_tuplet
 			tuple_obj.depth = tuple_depth
 			tuple_obj.start_index = #self.entries + 1
