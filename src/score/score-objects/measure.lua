@@ -111,7 +111,6 @@ end
 -- ─────────────────────────────────────
 function Measure:new(time_sig, tree, number)
 	local has_decimal
-
 	local tree, has_decimal = rhythm.normalize_decimal_level(tree)
 
 	tree = normalize_single_measure_span_tree(time_sig, tree)
@@ -119,6 +118,32 @@ function Measure:new(time_sig, tree, number)
 	for i = 1, #tree do
 		local value = rhythm.rhythm_value(tree[i])
 		measure_sum = measure_sum + math.abs(value)
+	end
+
+	if has_decimal and measure_sum > 0 then
+		local numerator = time_sig[1]
+		local denominator = time_sig[2]
+
+		local divisor = utils.gcd(numerator, measure_sum * denominator)
+
+		local exact_figure = (measure_sum * denominator) // divisor
+		local scale = numerator // divisor
+
+		if utils.is_power_of_two(exact_figure) then
+			for i, entry in ipairs(tree) do
+				local value = rhythm.rhythm_value(entry) * scale
+
+				if rhythm.is_tuplet_entry(entry) then
+					entry[1] = value
+				elseif type(entry) == "string" then
+					tree[i] = string.format("%d_", value)
+				else
+					tree[i] = value
+				end
+			end
+
+			measure_sum = measure_sum * scale
+		end
 	end
 
 	local obj = setmetatable({}, self)
