@@ -351,8 +351,14 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 
 			local tuple_depth = parent_tuplet and ((parent_tuplet.depth or 1) + 1) or 1
 			local tuplet_sum = rhythm.rhythm_sum(child_rhythms)
+
 			local total_figure_tuplet = parent_min_figure / up_value
 			local tuplet_min_figure = (total_figure_tuplet * utils.floor_pow2(tuplet_sum))
+			local exact_figure = math.tointeger(parent_min_figure * tuplet_sum / up_value)
+			if exact_figure and utils.is_power_of_two(exact_figure) then
+				tuplet_min_figure = exact_figure
+			end
+
 			local is_whole_span_unit_tuplet = (math.abs(tonumber(up_value) or 0) == 1) and (math.abs(total - 1) < 1e-9)
 			if is_whole_span_unit_tuplet then
 				-- Keep whole-span unit tuplets anchored to the parent figure scale.
