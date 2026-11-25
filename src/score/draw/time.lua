@@ -130,8 +130,11 @@ local function render_time_signature(ctx, origin_x, metrics, meta)
 		or '  <g class="time-signature">'
 	table.insert(lines, group_header)
 
-	draw_digit_row(metrics.numerator or {}, metrics.numerator_bottom_y, "bottom")
-	draw_digit_row(metrics.denominator or {}, metrics.denominator_top_y, "top")
+	for _, staff in ipairs(ctx.staves or { ctx.staff }) do
+		local offset = staff.top - ctx.staff.top
+		draw_digit_row(metrics.numerator or {}, metrics.numerator_bottom_y + offset, "bottom")
+		draw_digit_row(metrics.denominator or {}, metrics.denominator_top_y + offset, "top")
+	end
 	table.insert(lines, "  </g>")
 
 	local glyph_right = math.max(max_right + (metrics.right_padding or 0), start_x + max_width)

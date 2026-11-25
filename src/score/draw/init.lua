@@ -10,6 +10,7 @@ local function create_initial_state(ctx, chords, spacing_sequence, measure_meta)
 	utils.log("create_initial_state", 2)
 	local staff = ctx.staff
 	local staff_spacing = staff.spacing
+	local clef_width = ctx.clef.layout_width or ctx.clef.default_width or staff_spacing * 2
 	spacing_sequence = spacing_sequence or {}
 	measure_meta = measure_meta or {}
 
@@ -34,13 +35,10 @@ local function create_initial_state(ctx, chords, spacing_sequence, measure_meta)
 
 		clef_metrics = ctx.clef.metrics,
 		clef_x = ctx.clef.render_x,
-		clef_width = (ctx.clef.metrics and ctx.clef.metrics.width) or ctx.clef.default_width or (staff_spacing * 2),
-		note_start_x = ctx.clef.render_x
-			+ ((ctx.clef.metrics and ctx.clef.metrics.width) or ctx.clef.default_width or (staff_spacing * 2))
-			+ (staff_spacing * ctx.clef.spacing_after),
+		clef_width = clef_width,
+		note_start_x = ctx.clef.render_x + clef_width + staff_spacing * ctx.clef.spacing_after,
 		current_x = nil,
-		layout_right = ctx.clef.render_x
-			+ ((ctx.clef.metrics and ctx.clef.metrics.width) or ctx.clef.default_width or (staff_spacing * 2)),
+		layout_right = ctx.clef.render_x + clef_width,
 
 		bottom_ref = ctx.diatonic_reference,
 		chords_rest_positions = {},

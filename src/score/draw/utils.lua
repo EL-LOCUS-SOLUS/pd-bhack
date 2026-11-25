@@ -157,7 +157,7 @@ local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y
 		min_y = abs_min_y,
 		max_y = abs_max_y,
 	}
-	if ctx and ctx.width and ctx.height then
+	if ctx and not ctx.clip_to_viewport and ctx.width and ctx.height then
 		if abs_min_x < 0 or abs_max_x > ctx.width or abs_min_y < 0 or abs_max_y > ctx.height then
 			record_canvas_violation(ctx, glyph_name, bounds)
 		end

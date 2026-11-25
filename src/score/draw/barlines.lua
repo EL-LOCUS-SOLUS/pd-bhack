@@ -1,9 +1,9 @@
 local utils = require("score/functions/utils")
 local render_utils = require("score/draw/utils")
 
-local function draw_barline(ctx, x, glyph_name)
+local function draw_barline(ctx, x, glyph_name, staff)
 	utils.log("draw_barline", 2)
-	local staff = ctx.staff
+	staff = staff or ctx.staff
 	local group, metrics = render_utils.glyph_group(
 		ctx,
 		glyph_name or "barlineSingle",
@@ -36,6 +36,12 @@ local function handle_barlines(state)
 		local bchunk, bm = draw_barline(state.ctx, bx, meta.barline)
 		if bchunk then
 			table.insert(state.barline_svg, "  " .. bchunk)
+		end
+		for i = 2, #(state.ctx.staves or {}) do
+			local chunk = draw_barline(state.ctx, bx, meta.barline, state.ctx.staves[i])
+			if chunk then
+				table.insert(state.barline_svg, "  " .. chunk)
+			end
 		end
 		if bm then
 			local bar_right = bx + (bm.max_x or ((bm.width or 0) * 0.5))

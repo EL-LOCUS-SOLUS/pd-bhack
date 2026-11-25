@@ -74,7 +74,7 @@ local function add_tie_path(state, start_x, start_y, end_x, end_y, orientation)
 	local c2x = end_x - control_dx
 	local c1y = mid_y + arc_height
 	local c2y = mid_y + arc_height
-	local stroke = math.max(spacing * 0.08, 0.8)
+	local stroke = spacing * 0.2
 	local path = string.format(
 		'  <path d="M %.3f %.3f C %.3f %.3f %.3f %.3f %.3f %.3f" fill="none" stroke="#000000" stroke-width="%.3f" stroke-linecap="round"/>',
 		start_x,

@@ -396,10 +396,10 @@ local function arrow_accidental_vertical_offset(meta, glyph_name, accidental_key
 	return glyph_center - base_center
 end
 
-local function render_accidents(ctx, chord, current_x, layout_right)
+local function render_accidents(ctx, chord, current_x, layout_right, placements)
 	utils.log("render_accidents", 2)
 	local notes = chord.notes
-	if not notes or #notes == 0 then
+	if not notes or #notes == 0 or ctx.clef.config.glyph == "unpitchedPercussionClef1" then
 		return nil, current_x, { has_accidentals = false, lead_gap = 0 }
 	end
 
@@ -416,7 +416,7 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 		local offset = note.cluster_offset_px or 0
 		local effective_left = offset
 		if note.steps then
-			local ledgers = geometry.ledger_positions(ctx, note.steps)
+			local ledgers = geometry.ledger_positions(ctx, placements and placements[note].steps or note.steps)
 			if #ledgers > 0 then
 				effective_left = math.min(effective_left, offset - (ledger_cfg.extension or 0) - ledger_extra_each_side)
 			end
@@ -476,7 +476,8 @@ local function render_accidents(ctx, chord, current_x, layout_right)
 		local accidental_key = note.accidental
 		local glyph_name = accidental_key and constants.ACCIDENTAL_GLYPHS[accidental_key]
 		if glyph_name and note.steps then
-			local note_y = geometry.staff_y_for_steps(ctx, note.steps)
+			local placement = placements and placements[note]
+			local note_y = placement and placement.y or geometry.staff_y_for_steps(ctx, note.steps)
 			local y_offset = glyph_vertical_offset(glyph_name, accidental_key)
 			local glyph_options = (y_offset ~= 0) and { y_offset_spaces = y_offset } or nil
 			local _, metrics =
@@ -736,11 +737,14 @@ local function render_noteheads(state)
 
 	for _, note in ipairs(chord.notes) do
 		local center_x = chord_x + (note.cluster_offset_px or 0)
-		local note_y = geometry.staff_y_for_steps(state.ctx, note.steps)
-		local notehead_options = notehead_origin_options(note.notehead)
+		local placement = state.note_placements[note]
+		local note_y = placement.y
+		local percussion = state.ctx.clef.config.glyph == "unpitchedPercussionClef1"
+		local notehead = percussion and "noteheadBlack" or note.notehead
+		local notehead_options = notehead_origin_options(notehead)
 		local g, m = render_utils.glyph_group(
 			state.ctx,
-			note.notehead,
+			notehead,
 			center_x,
 			note_y,
 			"center",
@@ -772,12 +776,12 @@ local function render_noteheads(state)
 				local dot_x_step = state.staff_spacing
 				local note_base_x = center_x + ((m and m.min_x) or (notehead_width * -0.5)) + state.staff_spacing / 2
 				local dot_y = note_y
-				local dot_steps = note.steps
+				local dot_steps = placement.steps
 				if dot_steps then
 					if (dot_steps % 2) == 0 then
 						dot_steps = dot_steps + 1
 					end
-					dot_y = geometry.staff_y_for_steps(state.ctx, dot_steps)
+					dot_y = geometry.staff_y_for_steps(state.ctx, dot_steps, placement.staff)
 				end
 				for dot_index = 1, chord_dot_level do
 					local dx = dot_x_offset + (dot_index - 1) * dot_x_step
@@ -890,7 +894,8 @@ local function render_ledgers(state)
 
 	for _, note in ipairs(chord.notes) do
 		local center_x = chord_x + (note.cluster_offset_px or 0)
-		local ledgers = geometry.ledger_positions(state.ctx, note.steps)
+		local placement = state.note_placements[note]
+		local ledgers = geometry.ledger_positions(state.ctx, placement.steps)
 		if #ledgers > 0 then
 			local head_width_px = (state.note_head_metrics[note] and state.note_head_metrics[note].width)
 				or (state.staff_spacing * 1.0)
@@ -901,7 +906,7 @@ local function render_ledgers(state)
 				state.chord_rightmost = right
 			end
 			for _, st in ipairs(ledgers) do
-				local y = geometry.staff_y_for_steps(state.ctx, st)
+				local y = geometry.staff_y_for_steps(state.ctx, st, placement.staff)
 				table.insert(
 					state.ledger_svg,
 					string.format(
@@ -1081,19 +1086,17 @@ local function prepare_chord_notes(state)
 		return state
 	end
 
+	local percussion = state.ctx.clef.config.glyph == "unpitchedPercussionClef1"
+	state.note_placements = {}
 	for _, note in ipairs(chord.notes) do
-		if state.ctx.clef.config.glyph == "unpitchedPercussionClef1" then
-			note.letter = "B"
-			note.accidental = ""
-			note.octave = 4
-			note.notehead = "noteheadBlack"
-		end
 		if note.raw and (not note.letter or not note.octave) then
 			note.letter, note.accidental, note.octave = internal_utils.parse_pitch(note.raw)
 		end
-		if note.letter and note.octave then
-			note.steps = geometry.diatonic_value(constants.DIATONIC_STEPS, note.letter, note.octave) - state.bottom_ref
-		end
+		local pitch = percussion and geometry.diatonic_value(constants.DIATONIC_STEPS, "B", 4)
+			or geometry.diatonic_value(constants.DIATONIC_STEPS, note.letter, note.octave)
+		note.steps = pitch - state.bottom_ref
+		local staff, steps = geometry.select_staff(state.ctx, pitch)
+		state.note_placements[note] = { staff = staff, steps = steps, y = geometry.staff_y_for_steps(state.ctx, steps, staff) }
 		note.cluster_offset_px = 0
 		note.stem_anchor_x = nil
 		note.stem_anchor_y = nil
@@ -1114,7 +1117,7 @@ local function render_notes_and_chords(state)
 
 	local skip_accidentals = state.skip_accidentals
 	local accidental_chunk, adjusted_x, accidental_state =
-		render_accidents(state.ctx, chord, chord_x, state.layout_right)
+		render_accidents(state.ctx, chord, chord_x, state.layout_right, state.note_placements)
 	if adjusted_x then
 		state.current_chord_x = adjusted_x
 		chord_x = adjusted_x

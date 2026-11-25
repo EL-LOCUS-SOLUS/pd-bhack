@@ -73,48 +73,60 @@ M.STEM_GLYPHS = {
 
 M.CLEF_CONFIGS = {
 	g = {
+		key = "g",
 		glyph = "gClef",
 		bottom_line = { letter = "E", octave = 4 },
 		anchor_pitch = { letter = "G", octave = 4 },
 		lines = { 0, 4 },
 	},
 	f = {
+		key = "f",
 		glyph = "fClef",
 		bottom_line = { letter = "G", octave = 2 },
 		anchor_pitch = { letter = "F", octave = 3 },
 		lines = { 0, 4 },
 	},
 	c = {
+		key = "c",
 		glyph = "cClef",
 		bottom_line = { letter = "F", octave = 3 },
 		anchor_pitch = { letter = "C", octave = 4 },
 		lines = { 0, 4 },
 	},
 	percussion = {
+		key = "percussion",
 		glyph = "unpitchedPercussionClef1",
 		bottom_line = { letter = "E", octave = 4 },
 		anchor_pitch = { letter = "G", octave = 4 },
 		lines = { 2, 2 },
 	},
-	gf = {
-		{
-			glyph = "gClef",
-			bottom_line = { letter = "E", octave = 4 },
-			anchor_pitch = { letter = "G", octave = 4 },
-		},
-		{
-			glyph = "fClef",
-			bottom_line = { letter = "G", octave = 2 },
-			anchor_pitch = { letter = "F", octave = 3 },
-		},
-	},
 }
+
+local treble, bass = M.CLEF_CONFIGS.g, M.CLEF_CONFIGS.f
+local treble_8va = {
+	key = "g",
+	glyph = "gClef8va",
+	bottom_line = { letter = "E", octave = 5 },
+	anchor_pitch = { letter = "G", octave = 5 },
+	lines = treble.lines,
+}
+local bass_8vb = {
+	key = "f",
+	glyph = "fClef8vb",
+	bottom_line = { letter = "G", octave = 1 },
+	anchor_pitch = { letter = "F", octave = 2 },
+	lines = bass.lines,
+}
+M.CLEF_CONFIGS.gf = { treble, bass }
+M.CLEF_CONFIGS.gff = { treble, bass, bass_8vb }
+M.CLEF_CONFIGS.ggff = { treble_8va, treble, bass, bass_8vb }
 
 M.CLEF_CONFIG_BY_GLYPH = {
 	gClef = M.CLEF_CONFIGS.g,
 	fClef = M.CLEF_CONFIGS.f,
 	cClef = M.CLEF_CONFIGS.c,
 	pClef = M.CLEF_CONFIGS.percussion,
+	unpitchedPercussionClef1 = M.CLEF_CONFIGS.percussion,
 }
 
 M.ACCIDENTAL_GLYPHS = {
@@ -451,12 +463,13 @@ M.METRONOME_NOTE_GLYPHS = {
 
 M.DIATONIC_STEPS = { C = 0, D = 1, E = 2, F = 3, G = 4, A = 5, B = 6 }
 
+M.DEFAULT_STAFF_SIZE = 4
+M.DEFAULT_STAFF_GAP = 8
 M.DEFAULT_CLEF_LAYOUT = {
 	padding_spaces = 1,
 	horizontal_offset_spaces = 0.8,
 	spacing_after = 2.0,
 	vertical_offset_spaces = 0.0,
-	fallback_span_spaces = 6.5,
 }
 
 return M

@@ -62,6 +62,9 @@ function Score:new(w, h)
 		obj.w = w
 		obj.h = h
 	end
+	obj.staff_size = M.DEFAULT_STAFF_SIZE
+	obj.staff_gap = M.DEFAULT_STAFF_GAP
+	obj.default_clef_layout = setmetatable({}, { __index = M.DEFAULT_CLEF_LAYOUT })
 	obj.current_measure_position = 1
 	if not M.__font_singleton then
 		M.__font_singleton = font.FontLoaded:new()
@@ -93,10 +96,6 @@ function Score:set_material(material)
 	self.clef_name_or_key = material.clef
 	self.bpm = material.bpm
 
-	if self.default_clef_layout == nil then
-		self.default_clef_layout = M.DEFAULT_CLEF_LAYOUT
-	end
-
 	if not (self.render_tree or self.render_stems) then
 		material.tree = {}
 		material.tree[1] = {}
@@ -112,112 +111,130 @@ function Score:set_material(material)
 	local chords = v.chords
 	self.voice = v
 
-	local clef_cfg = geometry.resolve_clef_config(self.clef_name_or_key)
-	clef_cfg.key = clef_cfg.key or tostring(self.clef_name_or_key or "g")
-	local units_em = font.units_per_em_value()
-	local geom = geometry.compute_staff_geometry(self.w, self.h, clef_cfg.glyph, self.default_clef_layout, units_em)
-	assert(geom, "Could not compute staff geometry")
-
-	local bottom = clef_cfg.bottom_line
-	local bottom_value = geometry.diatonic_value(M.DIATONIC_STEPS, bottom.letter:upper(), bottom.octave)
-	local tuplet_directions = voice.assign_tuplet_directions(chords, v.tuplets, clef_cfg.key)
-
 	self.ctx = {
-		width = geom.width,
-		height = geom.height,
-		glyph = {
-			bboxes = M.Bravura_Metadata and M.Bravura_Metadata.glyphBBoxes,
-			units_per_space = geom.units_per_space,
-			scale = geom.glyph_scale,
-		},
-		staff = {
-			top = geom.staff_top,
-			bottom = geom.staff_bottom,
-			center = geom.staff_center,
-			left = geom.staff_left,
-			width = geom.drawable_width,
-			spacing = geom.staff_spacing,
-			line_thickness = geom.staff_line_thickness,
-			padding = geom.staff_padding_px,
-		},
-		ledger = {
-			extension = geom.ledger_extension,
-			thickness = geom.staff_line_thickness,
-		},
-		clef = {
-			name = clef_cfg.glyph,
-			anchor_offset = self.default_clef_layout.horizontal_offset_spaces,
-			spacing_after = self.default_clef_layout.spacing_after,
-			vertical_offset_spaces = self.default_clef_layout.vertical_offset_spaces,
-			padding_spaces = geom.clef_padding_spaces,
-			config = clef_cfg,
-		},
-		note = {
-			glyph = "noteheadBlack",
-			spacing = geom.staff_spacing * 2.5,
-			accidental_gap = geom.staff_spacing * 0.2,
-		},
-		diatonic_reference = bottom_value,
 		steps_lookup = M.DIATONIC_STEPS,
 		measures = measures,
 		chords = chords,
 		tuplets = v.tuplets or {},
-		tuplet_direction_lookup = tuplet_directions,
 		measure_meta = measure.build_measure_meta(measures),
 		bpm = self.bpm,
 		time_unity = 4,
 		render_tree = self.render_tree,
 		render_stems = self.render_stems,
+		tree = material.draw and material.tree or nil,
 	}
 	refresh_chord_note_duration_ms(self.ctx)
-	if not material.draw then
+	self:layout(material.draw)
+	if material.draw then
+		self:set_current_measure_position(self.current_measure_position)
+	end
+end
+
+-- Rebuild display geometry without replacing the sequence or its playback state.
+function Score:layout(draw)
+	local ctx = self.ctx
+	local config = geometry.resolve_clef_config(self.clef_name_or_key)
+	local clefs = config.glyph and { config } or config
+	local layout = self.default_clef_layout
+	local geom = geometry.compute_staff_geometry(
+		self.w,
+		self.h,
+		self.staff_size,
+		self.staff_gap,
+		#clefs,
+		layout,
+		font.units_per_em_value()
+	)
+	ctx.width = geom.width
+	ctx.height = geom.height
+	ctx.clip_to_viewport = true
+	ctx.glyph = {
+		bboxes = M.Bravura_Metadata and M.Bravura_Metadata.glyphBBoxes,
+		units_per_space = geom.units_per_space,
+		scale = geom.glyph_scale,
+	}
+	ctx.staves = {}
+	for i, clef in ipairs(clefs) do
+		local top = geom.staff_top + (i - 1) * geom.staff_stride
+		local bottom_pitch = clef.bottom_line
+		ctx.staves[i] = {
+			top = top,
+			bottom = top + geom.staff_height,
+			center = top + geom.staff_height * 0.5,
+			left = geom.staff_left,
+			width = geom.drawable_width,
+			spacing = geom.staff_spacing,
+			line_thickness = geom.staff_line_thickness,
+			padding = geom.staff_padding_px,
+			diatonic_reference = geometry.diatonic_value(M.DIATONIC_STEPS, bottom_pitch.letter, bottom_pitch.octave),
+			clef = {
+				name = clef.glyph,
+				anchor_offset = layout.horizontal_offset_spaces,
+				spacing_after = layout.spacing_after,
+				vertical_offset_spaces = layout.vertical_offset_spaces,
+				config = clef,
+			},
+		}
+	end
+	ctx.staff = ctx.staves[1]
+	ctx.clef = ctx.staff.clef
+	ctx.diatonic_reference = ctx.staff.diatonic_reference
+	ctx.ledger = { extension = geom.ledger_extension, thickness = geom.staff_line_thickness }
+	ctx.note = {
+		glyph = "noteheadBlack",
+		spacing = geom.staff_spacing * 2.5,
+		accidental_gap = geom.staff_spacing * 0.2,
+	}
+	if ctx.clef_key ~= self.clef_name_or_key or not ctx.tuplet_direction_lookup then
+		ctx.clef_key = self.clef_name_or_key
+		for _, chord in ipairs(ctx.chords) do
+			chord.stem_direction = nil
+		end
+		ctx.tuplet_direction_lookup = voice.assign_tuplet_directions(ctx.chords, ctx.tuplets, ctx.clef.config.key)
+	end
+	if not draw then
 		return
 	end
 
-	self.ctx.tuplet_base_y = self.ctx.staff.top - (self.ctx.staff.spacing * 0.9)
-	self.ctx.tuplet_vertical_gap = self.ctx.staff.spacing * 2.5
-	self.ctx.tuplet_bracket_height = self.ctx.staff.spacing * 0.9
-	self.ctx.tuplet_label_height = self.ctx.staff.spacing * 10
-	self.ctx.tuplet_margin = self.ctx.staff.spacing * 0.5
-	self.ctx.measure_tuplet_extra_gap = self.ctx.tuplet_vertical_gap
+	local spacing = geom.staff_spacing
+	ctx.tuplet_base_y = ctx.staff.top - spacing * 0.9
+	ctx.tuplet_vertical_gap = spacing * 2.5
+	ctx.tuplet_bracket_height = spacing * 0.9
+	ctx.tuplet_label_height = spacing * 10
+	ctx.tuplet_margin = spacing * 0.5
+	ctx.measure_tuplet_extra_gap = ctx.tuplet_vertical_gap
 
-	local note_bbox = M.Bravura_Metadata
-		and M.Bravura_Metadata.glyphBBoxes
-		and M.Bravura_Metadata.glyphBBoxes[self.ctx.note.glyph]
+	local note_bbox = ctx.glyph.bboxes and ctx.glyph.bboxes[ctx.note.glyph]
 
 	if note_bbox and note_bbox.bBoxNE and note_bbox.bBoxSW then
 		local sw_x = note_bbox.bBoxSW[1] or 0
 		local ne_x = note_bbox.bBoxNE[1] or 0
 		local width_spaces = ne_x - sw_x
 		local half_w = width_spaces * 0.5
-		self.ctx.note.left_extent = half_w * geom.staff_spacing
-		self.ctx.note.right_extent = half_w * geom.staff_spacing
+		ctx.note.left_extent = half_w * spacing
+		ctx.note.right_extent = half_w * spacing
 	else
-		self.ctx.note.left_extent = geom.staff_spacing * 0.6
-		self.ctx.note.right_extent = self.ctx.note.left_extent
+		ctx.note.left_extent = spacing * 0.6
+		ctx.note.right_extent = ctx.note.left_extent
 	end
 
-	local first_meta = self.ctx.measure_meta and self.ctx.measure_meta[1]
+	local first_meta = ctx.measure_meta and ctx.measure_meta[1]
 	if first_meta and first_meta.show_time_signature then
 		local tm = render_time.compute_time_signature_metrics(
-			self.ctx,
+			ctx,
 			first_meta.time_signature.numerator,
 			first_meta.time_signature.denominator
 		)
 		first_meta.time_signature_metrics = tm
-		self.ctx.time_signature_total_width = tm and tm.total_width or 0
+		ctx.time_signature_total_width = tm and tm.total_width or 0
 	else
-		self.ctx.time_signature_total_width = 0
+		ctx.time_signature_total_width = 0
 	end
 	if first_meta and first_meta.time_signature and first_meta.time_signature.denominator then
-		self.ctx.time_unity = first_meta.time_signature.denominator
+		ctx.time_unity = first_meta.time_signature.denominator
 	end
 
-	self.ctx.tree = material.tree
-	self.ctx.spacing_sequence = measure.compute_spacing_from_measures(self.ctx, measures)
-
-	self.current_measure_position = self.current_measure_position or 1
-	self:set_current_measure_position(self.current_measure_position)
+	ctx.spacing_sequence = measure.compute_spacing_from_measures(ctx, ctx.measures)
 end
 
 -- ─────────────────────────────────────
@@ -399,7 +416,7 @@ function Score:getsvg()
 	table.insert(
 		svg_chunks,
 		string.format(
-			'<svg xmlns="http://www.w3.org/2000/svg" width="%.3f" height="%.3f" viewBox="0 0 %.3f %.3f">',
+			'<svg xmlns="http://www.w3.org/2000/svg" width="%.3f" height="%.3f" viewBox="0 0 %.3f %.3f" overflow="hidden">',
 			self.ctx.width,
 			self.ctx.height,
 			self.ctx.width,
@@ -412,10 +429,15 @@ function Score:getsvg()
 		table.insert(svg_chunks, staff_svg)
 	end
 
-	local clef_svg, _, _ = render_staff.draw_clef(self.ctx)
-	if clef_svg then
-		table.insert(svg_chunks, clef_svg)
+	local clef_width = 0
+	for _, staff in ipairs(self.ctx.staves or { self.ctx.staff }) do
+		local clef_svg, metrics = render_staff.draw_clef(self.ctx, staff)
+		if clef_svg then
+			table.insert(svg_chunks, clef_svg)
+			clef_width = math.max(clef_width, metrics.width)
+		end
 	end
+	self.ctx.clef.layout_width = clef_width > 0 and clef_width or nil
 
 	local ts_svg, notes_svg, ledger_svg, barline_svg, tuplet_svg, tie_svg, measure_number_svg, chords_rest_positions =
 		rendering.draw_sequence(self.ctx, self.ctx.chords, self.ctx.spacing_sequence, self.ctx.measure_meta)

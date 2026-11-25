@@ -1,5 +1,8 @@
 local b_chords = pd.Class:new():register("bhack.chord-seq")
 local bhack = require("bhack")
+local pd_layout = require("score/compatibility/pd_layout")
+
+pd_layout.install(b_chords)
 
 -- local m2n = require("bhack").utils.m2n
 local n2m = require("bhack").utils.n2m
@@ -17,11 +20,7 @@ function b_chords:initialize(_, args)
 	self.current_clef_key = "g"
 
 	-- Geometry
-	local default_width = 200
-	local default_height = 80
-	self.width = args and tonumber(args[1]) or default_width
-	self.height = args and tonumber(args[2]) or default_height
-	self:set_size(self.width, self.height)
+	pd_layout.initialize(self, bhack.score, args, 200, 80)
 
 	-- Playback
 	self.playclock = pd.Clock:new():register(self, "playing_clock")
@@ -35,7 +34,6 @@ function b_chords:initialize(_, args)
 	self.previous_entry = nil
 
 	-- Initialize Score
-	self.Score = bhack.score.Score:new(self.width, self.height)
 	self.Score:set_material({
 		clef = self.current_clef_key,
 		render_tree = false,
@@ -216,55 +214,7 @@ end
 --╭─────────────────────────────────────╮
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
-function b_chords:in_1_size(args)
-	if type(args) ~= "table" then
-		return
-	end
-	local maybe_width = tonumber(args[1])
-	local maybe_height = tonumber(args[2])
-	if maybe_width and maybe_width > 0 then
-		self.width = maybe_width
-	end
-	if maybe_height and maybe_height > 0 then
-		self.height = maybe_height
-	end
-	self:set_size(self.width, self.height)
-	self.Score = bhack.score.Score:new(self.width, self.height)
-	self.Score:set_material({
-		clef = self.current_clef_key,
-		render_tree = false,
-		tree = self.rhythm_tree_spec,
-		chords = self.CHORDS,
-		bpm = self.bpm,
-		draw = true,
-	})
-
-	self:repaint()
-end
-
--- ─────────────────────────────────────
-function b_chords:in_1_clef(args)
-	local raw = args and args[1]
-	local key = raw and tostring(raw):lower() or ""
-	local clef = bhack.score.CLEF_CONFIGS[raw]
-
-	if clef == nil then
-		self:error("Invalid clef: " .. tostring(raw))
-		return
-	end
-
-	self.current_clef_key = key
-	self.CLEF_NAME = clef
-
-	self.Score:set_material({
-		clef = self.current_clef_key,
-		render_tree = false,
-		tree = self.rhythm_tree_spec,
-		chords = normalize_chords_list(self.CHORDS),
-		bpm = self.bpm,
-		draw = true,
-	})
-
+function b_chords:refresh_score_view()
 	self:repaint()
 end
 
@@ -407,5 +357,5 @@ function b_chords:in_1_reload()
 
 	self:dofilex(self._scriptname)
 	bhack = require("bhack")
-	self:initialize()
+	self:initialize(nil, self.get_args and self:get_args())
 end
