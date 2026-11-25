@@ -1,1 +1,3 @@
 build
+/tests/sigmund~.pd_linux
+/tests/sigmund~-help.pd

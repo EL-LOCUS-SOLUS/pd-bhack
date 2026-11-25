@@ -610,6 +610,15 @@ function b_voice:in_1_playbarpos(args)
 end
 
 -- ─────────────────────────────────────
+function b_voice:in_1_float(f)
+	if f == 1 then
+		self:in_1_play()
+	else
+		self:in_1_stop()
+	end
+end
+
+-- ─────────────────────────────────────
 function b_voice:in_1_play()
 	if self.is_playing then
 		self.last_onset = -1
@@ -643,8 +652,7 @@ function b_voice:in_1_stop()
 	self.last_was_rest = nil
 	self.current_measure = 1
 	self.Score:set_current_measure_position(self.current_measure)
-	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
-		self.Score:get_onsets(0)
+	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset = self.Score:get_onsets(0)
 	self.last_advanced_from_measure = nil
 	self.last_advanced_from_offset = nil
 	self.awaiting_render = false

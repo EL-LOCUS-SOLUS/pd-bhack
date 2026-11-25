@@ -268,6 +268,15 @@ function b_chords:in_1_bpm(args)
 end
 
 -- ─────────────────────────────────────
+function b_chords:in_1_float(f)
+	if f == 1 then
+		self:in_1_play()
+	else
+		self:in_1_stop()
+	end
+end
+
+-- ─────────────────────────────────────
 function b_chords:in_1_play()
 	self.onsets, self.last_onset = self.Score:get_onsets()
 	self.entry = nil

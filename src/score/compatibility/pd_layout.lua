@@ -44,6 +44,7 @@ local function initialize(object, score, args, default_width, default_height)
 	return index
 end
 
+-- ─────────────────────────────────────
 local function redraw(object)
 	local score = object.Score
 	score:layout(true)
@@ -60,6 +61,7 @@ local function redraw(object)
 	object:refresh_score_view()
 end
 
+-- ─────────────────────────────────────
 local function install(class)
 	function class:in_1_size(args)
 		local width = dimension(args and args[1]) or self.width
@@ -103,11 +105,16 @@ local function install(class)
 
 	if pd._set_propertiesfn then
 		function class:properties(p)
-			p:new_frame("Notation", 4)
+			p:new_frame("Notation", 5)
 			p:add_int("Object width (px)", "notation_width", self.width, 1)
 			p:add_int("Object height (px)", "notation_height", self.height, 1)
 			p:add_float("Staff size (px)", "notation_staff_size", self.Score.staff_size, 0)
 			p:add_float("Staff gap (spaces)", "notation_staff_gap", self.Score.staff_gap, 0)
+			p:add_float("BPM", "notation_bpm", self.Score:get_bpm(), 1)
+		end
+
+		function class:notation_bpm(bpm)
+			self:in_1_bpm({ bpm })
 		end
 
 		function class:notation_width(width)
