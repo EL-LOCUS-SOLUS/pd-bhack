@@ -12,6 +12,7 @@ function b_voice:initialize(_, args)
 	pd.post("[bhack.voice] Initializing bhack.voice...")
 	self.inlets = 2
 	self.outlets = 2
+	self.mouse_inside = false
 
 	-- Material
 	self.chords_raw = { { "C4" }, { "C4" }, { "C4" } }
@@ -455,6 +456,32 @@ local function build_full_score_svg(obj)
 	end
 
 	return result
+end
+
+--╭─────────────────────────────────────╮
+--│           Mouse Moviment            │
+--╰─────────────────────────────────────╯
+function b_voice:receive(sel, atoms)
+	local key = atoms[1]
+	if key == 32 then
+		if self.is_playing then
+			self:in_1_stop()
+		else
+			self:in_1_play()
+		end
+	end
+end
+
+function b_voice:mouse_enter(x, y)
+	self.mouse_receiver = pd.Receive:new():register(self, "#key", "receive")
+	self.mouse_inside = true
+	self:repaint(3)
+end
+
+function b_voice:mouse_exit(x, y)
+	self.mouse_receiver:destruct()
+	self.mouse_inside = false
+	self:repaint(3)
 end
 
 --╭─────────────────────────────────────╮
@@ -989,6 +1016,14 @@ function b_voice:paint_layer_2(g)
 			self.awaiting_render = true
 			self:repaint()
 		end
+	end
+end
+
+-- ─────────────────────────────────────
+function b_voice:paint_layer_3(g)
+	if self.mouse_inside then
+		g:set_color(200, 0, 0)
+		g:stroke_rect(0, 0, self.width, self.height, 1)
 	end
 end
 
