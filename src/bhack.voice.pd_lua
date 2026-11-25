@@ -2,6 +2,8 @@ local b_voice = pd.Class:new():register("bhack.voice")
 local bhack = require("bhack")
 local n2m = require("bhack").utils.n2m
 local pd_layout = require("score/compatibility/pd_layout")
+local RENDER_MEASURE_COUNT = 4
+local RENDER_MEASURE_STEP = 2
 
 pd_layout.install(b_voice)
 
@@ -27,11 +29,13 @@ function b_voice:initialize(_, args)
 
 	-- Geometry
 	local first_option = pd_layout.initialize(self, bhack.score, args, 250, 80)
+	self.Score:set_render_measure_count(RENDER_MEASURE_COUNT)
 
 	-- Playback
 	self.playclock = pd.Clock:new():register(self, "playing_clock")
 	self.clear_after_play = pd.Clock:new():register(self, "clear_playbar")
 	self.playbar_position = 0
+	self.playbar_entry_index = nil
 	self.last_valid_position = 0
 	self.playing = false
 	self.bpm = 120
@@ -137,6 +141,7 @@ function b_voice:clear_playbar()
 	self.awaiting_render = false
 	self.is_playing = false
 	self.playbar_position = 0
+	self.playbar_entry_index = nil
 	self:outlet(2, "bang", { "bang" })
 	self.svg = self.Score:getsvg()
 	self:repaint()
@@ -150,6 +155,7 @@ function b_voice:playing_clock()
 	-- end
 
 	self.playbar_position = self.playbar_position + 1
+	self.playbar_entry_index = nil
 	local tick = math.floor(self.playbar_position)
 	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
 		self.Score:get_onsets(tick)
@@ -344,6 +350,37 @@ local function find_entry_by_index(ctx, index)
 end
 
 -- ─────────────────────────────────────
+local function find_entry_index_at_tick(ctx, absolute_tick)
+	if not ctx then
+		return 0, 0
+	end
+	local measures = ctx.measures or {}
+	local bpm = tonumber(ctx.bpm)
+	if not bpm or bpm <= 0 then
+		return 0, 0
+	end
+	local ms_per_whole = (60000 / bpm) * 4
+	local cursor = 0
+	local current_index = 0
+	local entry_index = 0
+	local target_tick = math.max(0, tonumber(absolute_tick) or 0)
+	local prev_entry = nil
+	for _, m in ipairs(measures) do
+		for _, entry in ipairs(m.entries or {}) do
+			if is_countable_entry(entry, prev_entry) then
+				entry_index = entry_index + 1
+				if cursor <= target_tick then
+					current_index = entry_index
+				end
+			end
+			cursor = cursor + (entry_duration_whole_value(entry) * ms_per_whole)
+			prev_entry = entry
+		end
+	end
+	return current_index, entry_index
+end
+
+-- ─────────────────────────────────────
 local function absolute_tick_from_measure_offset(ctx, measure_index, offset_ms)
 	local starts = build_measure_start_offsets_ms(ctx)
 	if not starts then
@@ -372,6 +409,16 @@ local function local_tick_from_absolute(ctx, start_measure, absolute_tick)
 	end
 	local absolute = tonumber(absolute_tick) or 0
 	return absolute - measure_start
+end
+
+-- ─────────────────────────────────────
+local function render_window_start(measure_index, total_measures)
+	local measure = math.max(1, math.floor(tonumber(measure_index) or 1))
+	local total = math.max(1, math.floor(tonumber(total_measures) or 1))
+	local candidate = 1 + (math.floor((measure - 1) / RENDER_MEASURE_STEP) * RENDER_MEASURE_STEP)
+	local remaining = math.max(0, total - RENDER_MEASURE_COUNT)
+	local last_start = 1 + (math.ceil(remaining / RENDER_MEASURE_STEP) * RENDER_MEASURE_STEP)
+	return math.min(candidate, last_start)
 end
 
 -- ─────────────────────────────────────
@@ -421,6 +468,8 @@ local function build_full_score_svg(obj)
 	local original_width = ctx.width
 	local original_staff_width = ctx.staff and ctx.staff.width
 	local original_svg = obj.svg
+	local original_render_measure_count = score.render_measure_count or ctx.render_measure_count
+	score:set_render_measure_count(nil)
 
 	local ok, result = pcall(function()
 		score:set_current_measure_position(1)
@@ -447,6 +496,7 @@ local function build_full_score_svg(obj)
 	if ctx.staff then
 		ctx.staff.width = original_staff_width
 	end
+	score:set_render_measure_count(original_render_measure_count)
 	score:set_current_measure_position(original_measure_position)
 	score:getsvg()
 	obj.svg = original_svg
@@ -469,15 +519,36 @@ function b_voice:receive(sel, atoms)
 		else
 			self:in_1_play()
 		end
+	elseif key == 72 or key == 104 or key == 76 or key == 108 then
+		local ctx = self.Score and self.Score.ctx
+		if not ctx then
+			return
+		end
+
+		local absolute_tick =
+			absolute_tick_from_measure_offset(ctx, self.current_measure or 1, self.playbar_position or 0)
+		local inferred_index, total = find_entry_index_at_tick(ctx, absolute_tick)
+		if total == 0 then
+			return
+		end
+		local current_index = self.playbar_entry_index or inferred_index
+
+		local direction = (key == 72 or key == 104) and -1 or 1
+		local target_index = math.max(1, math.min(total, current_index + direction))
+		if target_index ~= current_index then
+			self:in_1_playbarpos({ target_index })
+		end
 	end
 end
 
+-- ─────────────────────────────────────
 function b_voice:mouse_enter(x, y)
 	self.mouse_receiver = pd.Receive:new():register(self, "#key", "receive")
 	self.mouse_inside = true
 	self:repaint(3)
 end
 
+-- ─────────────────────────────────────
 function b_voice:mouse_exit(x, y)
 	self.mouse_receiver:destruct()
 	self.mouse_inside = false
@@ -527,6 +598,7 @@ local function apply_voice_payload(self, dddd)
 	t = normalize_rhythm_tree_payload(t)
 
 	self.playbar_position = 0
+	self.playbar_entry_index = nil
 
 	-- Accept either a full rendering ctx (already built) or a material table.
 	-- voicebuilder outputs a material-like table (clef/tree/chords/bpm) without `draw`,
@@ -613,25 +685,36 @@ function b_voice:in_1_playbarpos(args)
 		self:error("[bhack.voice] playbarpos index out of range (1-" .. tostring(total) .. ")")
 		return
 	end
+	if self.is_playing then
+		release_entry(self, self.entry or self.previous_entry)
+	end
 
-	self.current_measure = info.measure_index
+	local total_measures = #(ctx.measures or {})
+	self.current_measure = render_window_start(info.measure_index, total_measures)
+	self.playbar_entry_index = index
 	self.Score:set_current_measure_position(self.current_measure)
 
-	local target_tick = math.max(0, math.floor(info.measure_offset_ms))
+	local target_tick = math.max(0, math.floor(local_tick_from_absolute(ctx, self.current_measure, info.absolute_ms)))
 	if self.is_playing then
 		self.playbar_position = target_tick - 1
 	else
 		self.playbar_position = target_tick
 	end
 
+	self.svg = self.Score:getsvg()
 	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
 		self.Score:get_onsets(math.max(0, target_tick))
 	self.last_onset = self.last_onset or 0
-	self.entry = self.onsets[target_tick]
-	self.last_valid_position = (self.entry and self.entry.left) or self.last_valid_position or 0
-	self.last_draw_position = self.last_valid_position
+	local target_entry = self.onsets[target_tick]
+	self.last_valid_position = (target_entry and target_entry.left) or self.last_valid_position or 0
+	if self.is_playing then
+		self.last_draw_position = nil
+		self.entry = nil
+	else
+		self.last_draw_position = self.last_valid_position
+		self.entry = target_entry
+	end
 	self.previous_entry = nil
-	self.svg = self.Score:getsvg()
 	self:repaint()
 	self:repaint(2)
 end
@@ -684,6 +767,7 @@ function b_voice:in_1_stop()
 	self.last_advanced_from_offset = nil
 	self.awaiting_render = false
 	self.playbar_position = 0
+	self.playbar_entry_index = nil
 	self.playing = false
 	self.is_playing = false
 	self.svg = self.Score:getsvg()
@@ -946,7 +1030,7 @@ function b_voice:paint_layer_2(g)
 	if pos == nil and self.entry and self.entry.left then
 		pos = self.entry.left
 	end
-	if self.is_playing and pos ~= nil then
+	if (self.is_playing or self.entry ~= nil) and pos ~= nil then
 		g:set_color(180, 75, 75)
 		local max_pos = math.max(0, self.width - padding)
 		if pos > max_pos then
@@ -959,21 +1043,10 @@ function b_voice:paint_layer_2(g)
 		local play_measure = self.current_play_measure or self.current_measure
 		local offset_ms = self.current_play_measure_offset or 0
 		local total_measures = (self.Score and self.Score.ctx and #(self.Score.ctx.measures or {})) or 0
-		local target_measure
-		if offset_ms > 0 then
-			target_measure = play_measure or 1
-		else
-			target_measure = (play_measure or 1) + 1
+		if total_measures < 1 then
+			return
 		end
-		if total_measures > 0 and target_measure > total_measures then
-			target_measure = total_measures
-			if target_measure < 1 then
-				return
-			end
-			if play_measure and play_measure > target_measure then
-				play_measure = target_measure
-			end
-		end
+		local target_measure = render_window_start(play_measure or self.current_measure, total_measures)
 
 		local allow_update = target_measure > (self.current_measure or 1)
 		if allow_update then
@@ -1022,7 +1095,7 @@ end
 -- ─────────────────────────────────────
 function b_voice:paint_layer_3(g)
 	if self.mouse_inside then
-		g:set_color(200, 0, 0)
+		g:set_color(0, 150, 255)
 		g:stroke_rect(0, 0, self.width, self.height, 1)
 	end
 end

@@ -496,7 +496,17 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
 		return finalize_svg_groups(state)
 	end
 
-	for entry_index = start_entry_index, state.total_entries do
+	local end_entry_index = state.total_entries
+	local render_measure_count = math.tointeger(ctx.render_measure_count)
+	if render_measure_count and render_measure_count > 0 and #measure_meta > 0 then
+		local end_measure_position = math.min(#measure_meta, start_measure_position + render_measure_count - 1)
+		local end_meta = measure_meta[end_measure_position]
+		if end_meta and end_meta.end_index then
+			end_entry_index = math.min(end_entry_index, end_meta.end_index)
+		end
+	end
+
+	for entry_index = start_entry_index, end_entry_index do
 		state.current_position_index = entry_index
 		state = apply_measure_start(state)
 

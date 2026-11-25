@@ -81,6 +81,7 @@ end
 -- ─────────────────────────────────────
 function Score:set_ctx(ctx)
 	self.ctx = ctx
+	self.ctx.render_measure_count = self.render_measure_count
 	refresh_chord_note_duration_ms(self.ctx)
 end
 
@@ -121,6 +122,7 @@ function Score:set_material(material)
 		time_unity = 4,
 		render_tree = self.render_tree,
 		render_stems = self.render_stems,
+		render_measure_count = self.render_measure_count,
 		tree = material.draw and material.tree or nil,
 	}
 	refresh_chord_note_duration_ms(self.ctx)
@@ -235,6 +237,20 @@ function Score:layout(draw)
 	end
 
 	ctx.spacing_sequence = measure.compute_spacing_from_measures(ctx, ctx.measures)
+end
+
+-- ─────────────────────────────────────
+function Score:set_render_measure_count(count)
+	local value = math.tointeger(count) or tonumber(count)
+	if value and value > 0 then
+		value = math.floor(value)
+	else
+		value = nil
+	end
+	self.render_measure_count = value
+	if self.ctx then
+		self.ctx.render_measure_count = value
+	end
 end
 
 -- ─────────────────────────────────────
