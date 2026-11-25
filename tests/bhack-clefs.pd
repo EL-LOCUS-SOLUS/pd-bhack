@@ -3,7 +3,7 @@
 #X declare -lib xlab;
 #X obj 5 24 declare -path ../src/;
 #X obj 5 4 declare -lib xlab;
-#X obj 7 323 bhack.chord-seq 400 150 4 3.5 ggff;
+#X obj 7 323 bhack.chord-seq 400 150 4 5 ggff;
 #X obj 7 83 bng 18 250 50 0 empty empty empty 0 -9 0 10 #fcfcfc #000000 #000000;
 #X obj 7 131 bhack.iterate;
 #X obj 82 177 bhack.op *;
@@ -15,11 +15,11 @@
 #X obj 7 282 bhack.collect;
 #X msg 215 284 clef ggff;
 #X msg 213 114 36;
-#X msg 95 283 staffgap 3.5;
 #X obj 7 108 bhack.arithmser 1 16 1;
 #X msg 179 284 play;
 #X msg 287 285 size 400 150;
-#X connect 3 0 15 0;
+#X msg 95 283 staffgap 5;
+#X connect 3 0 14 0;
 #X connect 4 0 11 0;
 #X connect 4 1 5 0;
 #X connect 5 0 8 0;
@@ -31,7 +31,7 @@
 #X connect 11 0 2 0;
 #X connect 12 0 2 0;
 #X connect 13 0 7 0;
-#X connect 14 0 2 0;
-#X connect 15 0 4 0;
+#X connect 14 0 4 0;
+#X connect 15 0 2 0;
 #X connect 16 0 2 0;
 #X connect 17 0 2 0;

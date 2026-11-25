@@ -73,8 +73,8 @@ function b_chords:midiout()
 end
 
 -- ─────────────────────────────────────
-function b_chords:clear_playbar()
-	local chord = self.previous_entry and self.previous_entry.chord
+local function release_entry(self, entry)
+	local chord = entry and entry.chord
 	if chord and chord.notes then
 		for i = 1, #chord.notes do
 			local pitchname = chord.notes[i].raw
@@ -82,6 +82,11 @@ function b_chords:clear_playbar()
 			self:outlet(1, "list", { midi, 0 })
 		end
 	end
+end
+
+-- ─────────────────────────────────────
+function b_chords:clear_playbar()
+	release_entry(self, self.previous_entry)
 
 	self.previous_entry = nil
 	self.entry = nil
@@ -272,6 +277,23 @@ function b_chords:in_1_play()
 	self.playbar_position = -1
 	self.playclock:delay(1)
 	self.is_playing = true
+end
+
+-- ─────────────────────────────────────
+function b_chords:in_1_stop()
+	self.playclock:unset()
+	self.clear_after_play:unset()
+	release_entry(self, self.entry or self.previous_entry)
+
+	self.entry = nil
+	self.previous_entry = nil
+	self.last_draw_position = nil
+	self.last_valid_position = 0
+	self.last_was_rest = nil
+	self.playbar_position = 0
+	self.playing = false
+	self.is_playing = false
+	self:repaint(2)
 end
 
 -- ─────────────────────────────────────

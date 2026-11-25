@@ -1,0 +1,5 @@
+#N canvas 0 0 165 100 10;
+#X declare -path ../src/;
+#X declare -lib xlab;
+#X obj 5 24 declare -path ../src/;
+#X obj 5 4 declare -lib xlab;

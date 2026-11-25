@@ -103,16 +103,26 @@ function b_voice:midiout()
 end
 
 -- ─────────────────────────────────────
-function b_voice:clear_playbar()
-	if self.midiplayback then
-		if self.previous_entry and not self.previous_entry.chord.is_rest then
-			for i = 1, #self.previous_entry.chord.notes do
-				local pitchname = self.previous_entry.chord.notes[i].raw
-				local midi = n2m(pitchname)
+local function release_entry(self, entry)
+	if not self.midiplayback then
+		return
+	end
+
+	local chord = entry and entry.chord
+	if chord and not chord.is_rest then
+		for i = 1, #(chord.notes or {}) do
+			local note = chord.notes[i]
+			local midi = note.midi or (note.raw and n2m(note.raw))
+			if midi then
 				self:outlet(1, "list", { midi, 0 })
 			end
 		end
 	end
+end
+
+-- ─────────────────────────────────────
+function b_voice:clear_playbar()
+	release_entry(self, self.previous_entry)
 
 	self.previous_entry = nil
 
@@ -618,6 +628,32 @@ function b_voice:in_1_play()
 	self.playbar_position = start_tick - 1
 	self.playclock:delay(1)
 	self.is_playing = true
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_1_stop()
+	self.playclock:unset()
+	self.clear_after_play:unset()
+	release_entry(self, self.entry or self.previous_entry)
+
+	self.entry = nil
+	self.previous_entry = nil
+	self.last_draw_position = nil
+	self.last_valid_position = 0
+	self.last_was_rest = nil
+	self.current_measure = 1
+	self.Score:set_current_measure_position(self.current_measure)
+	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
+		self.Score:get_onsets(0)
+	self.last_advanced_from_measure = nil
+	self.last_advanced_from_offset = nil
+	self.awaiting_render = false
+	self.playbar_position = 0
+	self.playing = false
+	self.is_playing = false
+	self.svg = self.Score:getsvg()
+	self:repaint()
+	self:repaint(2)
 end
 
 -- ─────────────────────────────────────
