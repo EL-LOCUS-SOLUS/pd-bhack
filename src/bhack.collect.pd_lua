@@ -13,7 +13,13 @@ end
 
 -- ─────────────────────────────────────
 function b_collect:in_1_bang()
-	self:dddd_outlet(1, self.outlet_id, self.collected_table)
+	local newdddd = bhack.dddd:new_from_table(self, self.collected_table)
+	newdddd:output(1)
+end
+
+-- ─────────────────────────────────────
+function b_collect:in_1_clear()
+	self.collected_table = {}
 end
 
 -- ─────────────────────────────────────
