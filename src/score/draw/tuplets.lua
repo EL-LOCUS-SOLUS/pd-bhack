@@ -734,29 +734,26 @@ local function render_tuplet_label_at(state, label, start_x, end_x, y)
 end
 
 -- ─────────────────────────────────────
-local function tuplet_family_max_depth(state, tuplet)
-	utils.log("tuplet_family_max_depth", 2)
-	if not state or not tuplet then
-		return nil
+local function tuplet_visible_descendant_levels(tuplet)
+	if not tuplet then
+		return 0
 	end
-	local depth = tuplet.depth or 1
-	if not tuplet.id then
-		return depth
-	end
-	local lookup = state.tuplet_bucket_lookup or {}
-	local root_id = lookup[tuplet.id] or tuplet.id
-	local family = state.tuplet_family_members and state.tuplet_family_members[root_id]
-	if not family then
-		return depth
-	end
-	local max_depth = depth
-	for _, member in ipairs(family) do
-		local member_depth = (member and member.depth) or 1
-		if member_depth > max_depth then
-			max_depth = member_depth
+
+	local max_levels = 0
+
+	for _, child in ipairs(tuplet.children or {}) do
+		if child.is_tuplet and child.parent and child.parent.id == tuplet.id then
+			local levels = tuplet_visible_descendant_levels(child)
+
+			if child.require_draw then
+				levels = levels + 1
+			end
+
+			max_levels = math.max(max_levels, levels)
 		end
 	end
-	return max_depth
+
+	return max_levels
 end
 
 -- ─────────────────────────────────────
@@ -770,15 +767,8 @@ render_tuplet_draw_request = function(state, request)
 		return false
 	end
 
-	local depth = tuplet.depth or 1
-	local max_depth = request.max_depth or tuplet_family_max_depth(state, tuplet) or depth
-	if max_depth < depth then
-		max_depth = depth
-	end
-
 	local direction = tuplet.forced_direction or (geometry and geometry.direction) or request.direction or "up"
-
-	local levels_from_deepest = max_depth - depth
+	local levels_from_deepest = tuplet_visible_descendant_levels(tuplet)
 	local depth_offset = state.tuplet_level_spacing * levels_from_deepest
 	local staff_spacing = state.staff_spacing or (state.ctx and state.ctx.staff and state.ctx.staff.spacing) or 0
 	local extra_margin = (state.ctx and state.ctx.tuplet_margin) or (staff_spacing * 0.2)
