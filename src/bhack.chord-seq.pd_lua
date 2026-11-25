@@ -216,33 +216,87 @@ local function normalize_chords_list(raw)
 end
 
 -- ─────────────────────────────────────
-local function apply_chords_payload(self, dddd)
-	local raw = dddd and dddd:get_table()
-	if type(raw) ~= "table" then
-		self:error("chord list payload is not a table")
-		return
+local function validate_chords_list(chords)
+	if type(chords) ~= "table" or #chords == 0 then
+		return nil, "chord list is empty"
 	end
 
-	if dddd.depth == 1 then
-		local chords = {}
-		for i, note in ipairs(raw) do
-			chords[i] = { note }
+	for chord_index, chord in ipairs(chords) do
+		if type(chord) ~= "table" or type(chord.notes) ~= "table" or #chord.notes == 0 then
+			return nil, string.format("chord %d has no notes", chord_index)
 		end
-		self.CHORDS = chords
-	else
-		self.CHORDS = raw
+		for note_index, pitch in ipairs(chord.notes) do
+			local ok, midi = pcall(n2m, pitch)
+			if not ok or type(midi) ~= "number" or midi ~= midi or midi == math.huge or midi == -math.huge then
+				return nil, string.format("chord %d note %d is not a valid pitch", chord_index, note_index)
+			end
+		end
 	end
 
-	self.Score:set_material({
+	return true
+end
+
+-- ─────────────────────────────────────
+local function build_candidate_score(self, chords)
+	local score = bhack.score.Score:new(self.width, self.height)
+	local previous = self.Score
+	if previous then
+		score.staff_size = previous.staff_size
+		score.staff_gap = previous.staff_gap
+		if previous.default_clef_layout and score.default_clef_layout then
+			for key, value in pairs(previous.default_clef_layout) do
+				score.default_clef_layout[key] = value
+			end
+		end
+	end
+
+	score:set_material({
 		clef = self.current_clef_key,
 		render_tree = false,
 		tree = self.rhythm_tree_spec,
-		chords = normalize_chords_list(self.CHORDS),
+		chords = chords,
 		bpm = self.bpm,
 		draw = true,
 	})
+	return score, score:getsvg()
+end
 
+-- ─────────────────────────────────────
+local function apply_chords_payload(self, dddd)
+	local raw = dddd and dddd:get_table()
+	if type(raw) ~= "table" then
+		self:error("[bhack.chord-seq] ignored invalid input; keeping the current score")
+		return false
+	end
+
+	local candidate_chords
+	if dddd.depth == 1 then
+		candidate_chords = {}
+		for i, note in ipairs(raw) do
+			candidate_chords[i] = { note }
+		end
+	else
+		candidate_chords = raw
+	end
+
+	local normalized = normalize_chords_list(candidate_chords)
+	local valid, validation_error = validate_chords_list(normalized)
+	if not valid then
+		self:error("[bhack.chord-seq] ignored " .. validation_error .. "; keeping the current score")
+		return false
+	end
+
+	local ok, candidate_score, candidate_svg = pcall(build_candidate_score, self, normalized)
+	if not ok then
+		self:error("[bhack.chord-seq] ignored invalid input; keeping the current score: " .. tostring(candidate_score))
+		return false
+	end
+
+	self.CHORDS = candidate_chords
+	self.Score = candidate_score
+	self.svg = candidate_svg
 	self:repaint()
+	return true
 end
 
 --╭─────────────────────────────────────╮
