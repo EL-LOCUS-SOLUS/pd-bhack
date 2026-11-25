@@ -126,6 +126,11 @@ function M.m2n(midi, temperament)
 		error("Unrecognized temperament " .. temperament)
 	end
 
+	midi = tonumber(midi)
+	if not midi or midi ~= midi or midi == math.huge or midi == -math.huge then
+		error("MIDI value must be a finite number", 2)
+	end
+
 	-- Quantize to the temperament, then use the closest semitone as the
 	-- written note. This keeps pitches near E written as E, rather than D#
 	-- followed by several downward alterations.

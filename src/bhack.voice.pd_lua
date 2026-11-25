@@ -11,10 +11,14 @@ pd_layout.install(b_voice)
 --│           Object Creator            │
 --╰─────────────────────────────────────╯
 function b_voice:initialize(_, args)
-	pd.post("[bhack.voice] Initializing bhack.voice...")
 	self.inlets = 2
 	self.outlets = 2
 	self.mouse_inside = false
+
+	-- pd.post(tostring(pd.bg_color()[1]))
+	-- pd.post(tostring(pd.fg_color()[1]))
+	-- pd.post(tostring(pd.gop_color()[1]))
+	-- pd.post(tostring(pd.flavor()))
 
 	-- Material
 	self.chords_raw = { { "C4" }, { "C4" }, { "C4" } }
@@ -23,6 +27,7 @@ function b_voice:initialize(_, args)
 		{ notes = { "C4" }, noteheads = { "n" } },
 		{ notes = { "C4" }, noteheads = { "n" } },
 	}
+
 	--self.CHORDS = { { notes = { "C4" }, noteheads = { "ord" } } }
 	self.rhythm_tree_spec = { { { 4, 4 }, { 1, 1, 1, 1 } } } -- default input
 	self.current_clef_key = "g"
@@ -721,7 +726,7 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:in_1_float(f)
-	if f == 1 then
+	if f ~= 0 then
 		self:in_1_play()
 	else
 		self:in_1_stop()
@@ -1095,8 +1100,8 @@ end
 -- ─────────────────────────────────────
 function b_voice:paint_layer_3(g)
 	if self.mouse_inside then
-		g:set_color(0, 150, 255)
-		g:stroke_rect(0, 0, self.width, self.height, 1)
+		-- g:set_color(0, 150, 255)
+		-- g:stroke_rect(0, 0, self.width, self.height, 1)
 	end
 end
 

@@ -104,6 +104,7 @@ end
 function b_chords:playing_clock()
 	self.playbar_position = self.playbar_position + 1
 	self.onsets, self.last_onset = self.Score:get_onsets()
+	self.last_onset = self.last_onset or 0
 
 	if self.playbar_position > self.last_onset then
 		self.previous_entry = self.entry
@@ -117,13 +118,11 @@ function b_chords:playing_clock()
 	end
 
 	local entry = self.onsets[self.playbar_position]
-	local pos = (entry and entry.left) or self.last_valid_position or 0
-	local is_rest = entry and entry.is_rest
-
-	if pos ~= self.last_draw_position then
+	if entry ~= nil then
+		local pos = tonumber(entry.left) or self.last_valid_position or 0
 		self.last_draw_position = pos
 		self.last_valid_position = pos
-		self.last_was_rest = is_rest
+		self.last_was_rest = entry.is_rest
 
 		self.previous_entry = self.entry
 		self.entry = entry
@@ -373,22 +372,25 @@ function b_chords:paint_layer_2(g)
 		end
 		p:close()
 		g:fill_path(p)
-
-		-- barra que indica a posição atual
-		g:set_color(180, 75, 75)
-		local pos = self.last_valid_position
-		g:fill_rect(pos - 1, padding, 1, self.height - (padding * 2))
-
-		if pos > self.width * 0.8 then
-			-- TODO:
-			-- pd.post("Need update the measures")
-		end
 	else
 		local rect_width = 1
 		local rect_height = 5
 		g:set_color(0, 0, 200)
 		g:fill_rect(padding, padding, rect_width, rect_height)
 		g:fill_rect(padding + rect_width + 2, padding, rect_width, rect_height)
+	end
+
+	-- Keep the playbar aligned with the current entry and inside the object.
+	local pos = self.last_valid_position
+	if pos == nil and self.entry and self.entry.left then
+		pos = self.entry.left
+	end
+	if (self.is_playing or self.entry ~= nil) and pos ~= nil then
+		local min_pos = math.min(padding, math.max(0, self.width - padding))
+		local max_pos = math.max(0, self.width - padding)
+		pos = math.max(min_pos, math.min(tonumber(pos) or min_pos, max_pos))
+		g:set_color(180, 75, 75)
+		g:fill_rect(pos - 1, padding, 1, self.height - (padding * 2))
 	end
 end
 

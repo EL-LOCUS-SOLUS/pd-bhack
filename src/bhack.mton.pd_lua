@@ -34,6 +34,10 @@ for fifths = -7, 7 do
 	signatures[#signatures + 1] = signature_for_fifths(fifths)
 end
 
+local function is_finite_number(value)
+	return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
 local function converted_parts(midi, temperament)
 	local converted = m2n(midi, temperament)
 	local letter, accidental, microtone, octave = converted:match("^([A-G])([#b]?)(.-)(%-?%d+)$")
@@ -45,8 +49,8 @@ end
 local function nearest_signature(midis, temperament)
 	local present = {}
 	for i, midi in ipairs(midis) do
-		if type(midi) ~= "number" then
-			return nil, string.format("MIDI value %d must be a number", i)
+		if not is_finite_number(midi) then
+			return nil, string.format("MIDI value %d must be a finite number", i)
 		end
 		-- Key signatures describe semitone pitch classes. Microtonal alterations
 		-- are retained in the output but do not affect signature discovery.
@@ -88,7 +92,9 @@ end
 
 local function key_signature_names(midis, temperament)
 	local signature, err = nearest_signature(midis, temperament)
-	if err or not signature then return nil, err end
+	if err or not signature then
+		return nil, err
+	end
 	local converted = {}
 	for i, midi in ipairs(midis) do
 		converted[i] = spell_midi(midi, signature, temperament)
@@ -110,7 +116,11 @@ end
 
 -- ─────────────────────────────────────
 function m2n_dddd:convert(midi)
-	return m2n(midi, self.temperament)
+	local ok, converted = pcall(m2n, midi, self.temperament)
+	if not ok then
+		return nil, converted
+	end
+	return converted
 end
 
 -- ─────────────────────────────────────
@@ -129,7 +139,12 @@ function m2n_dddd:in_1_list(atoms)
 
 	local converted = {}
 	for k, v in ipairs(atoms) do
-		converted[k] = self:convert(v)
+		local value, err = self:convert(v)
+		if not value then
+			self:error("[bhack.mton] " .. tostring(err))
+			return
+		end
+		converted[k] = value
 	end
 	bhack.dddd:new_from_table(self, converted):output(1)
 end
@@ -149,10 +164,16 @@ end
 
 -- ─────────────────────────────────────
 function m2n_dddd:in_1_float(atoms)
-	local nn = self:convert(atoms)
+	local nn, err = self:convert(atoms)
+	if not nn then
+		self:error("[bhack.mton] " .. tostring(err))
+		return
+	end
 	if self.keysig then
 		local converted = key_signature_names({ atoms }, self.temperament)
-		if converted then nn = converted[1] end
+		if converted then
+			nn = converted[1]
+		end
 	end
 	bhack.dddd:new_from_table(self, nn):output(1)
 end
@@ -173,7 +194,9 @@ function m2n_dddd:in_1_dddd(atoms)
 		local midis = {}
 		local function collect(x)
 			if type(x) == "table" then
-				for _, value in pairs(x) do collect(value) end
+				for _, value in pairs(x) do
+					collect(value)
+				end
 			else
 				midis[#midis + 1] = x
 			end
@@ -189,17 +212,28 @@ function m2n_dddd:in_1_dddd(atoms)
 
 	local function map_atoms_only(x)
 		if type(x) ~= "table" then
-			return signature and spell_midi(x, signature, self.temperament) or m2n(x, self.temperament)
+			if signature then
+				return spell_midi(x, signature, self.temperament)
+			end
+			return self:convert(x)
 		end
 
 		local t = {}
 		for k, v in pairs(x) do
-			t[k] = map_atoms_only(v)
+			local converted, err = map_atoms_only(v)
+			if not converted then
+				return nil, err
+			end
+			t[k] = converted
 		end
 		return t
 	end
 
-	local out = map_atoms_only(data)
+	local out, err = map_atoms_only(data)
+	if not out then
+		self:error("[bhack.mton] " .. tostring(err))
+		return
+	end
 
 	bhack.dddd:new_from_table(self, out):output(1)
 end
