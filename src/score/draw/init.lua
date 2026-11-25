@@ -200,19 +200,26 @@ end
 local function advance_position(state)
 	utils.log("advance_position", 2)
 	local index = state.current_position_index
-	local adv = state.spacing_sequence[index] or state.note_cfg.spacing
-	state.current_x = state.current_chord_x + adv
 
 	if not state.ctx.render_tree then
 		local chords_len = #state.chords
-		local staff_width = state.staff.width
-		if chords_len > 0 and staff_width and staff_width > 0 then
-			local estimated_x = state.note_start_x + (staff_width * (index / chords_len))
-			if estimated_x > state.current_x then
-				state.current_x = estimated_x
-			end
+		local staff_left = state.staff.left or 0
+		local staff_width = state.staff.width or 0
+		if chords_len > 0 and staff_width > 0 then
+			-- Chord sequences use the remaining width after the clef. Using the
+			-- complete staff width here placed the final chord beyond the viewport.
+			local staff_right = staff_left + staff_width
+			local available_width = math.max(0, staff_right - state.note_start_x)
+			local estimated_x = state.note_start_x + (available_width * (index / chords_len))
+			local right_padding = math.max(state.note_cfg.right_extent or 0, state.staff_spacing * 2)
+			local rightmost_anchor = math.max(state.note_start_x, staff_right - right_padding)
+			state.current_x = math.min(estimated_x, rightmost_anchor)
+			return state
 		end
 	end
+
+	local adv = state.spacing_sequence[index] or state.note_cfg.spacing
+	state.current_x = state.current_chord_x + adv
 
 	return state
 end
