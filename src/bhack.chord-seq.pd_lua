@@ -211,6 +211,36 @@ local function normalize_chords_list(raw)
 	return chords
 end
 
+-- ─────────────────────────────────────
+local function apply_chords_payload(self, dddd)
+	local raw = dddd and dddd:get_table()
+	if type(raw) ~= "table" then
+		self:error("chord list payload is not a table")
+		return
+	end
+
+	if dddd.depth == 1 then
+		local chords = {}
+		for i, note in ipairs(raw) do
+			chords[i] = { note }
+		end
+		self.CHORDS = chords
+	else
+		self.CHORDS = raw
+	end
+
+	self.Score:set_material({
+		clef = self.current_clef_key,
+		render_tree = false,
+		tree = self.rhythm_tree_spec,
+		chords = normalize_chords_list(self.CHORDS),
+		bpm = self.bpm,
+		draw = true,
+	})
+
+	self:repaint()
+end
+
 --╭─────────────────────────────────────╮
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
@@ -253,26 +283,12 @@ function b_chords:in_1_dddd(atoms)
 		error("dddd not found")
 	end
 
-	if dddd.depth == 1 then
-		local t = dddd:get_table()
-		for k, v in pairs(dddd:get_table()) do
-			t[k] = { v }
-		end
-		self.CHORDS = t
-	else
-		self.CHORDS = dddd:get_table()
-	end
+	apply_chords_payload(self, dddd)
+end
 
-	self.Score:set_material({
-		clef = self.current_clef_key,
-		render_tree = false,
-		tree = self.rhythm_tree_spec,
-		chords = normalize_chords_list(self.CHORDS),
-		bpm = self.bpm,
-		draw = true,
-	})
-
-	self:repaint()
+-- ─────────────────────────────────────
+function b_chords:in_1_list(atoms)
+	apply_chords_payload(self, bhack.dddd:new(self, atoms))
 end
 
 -- ─────────────────────────────────────

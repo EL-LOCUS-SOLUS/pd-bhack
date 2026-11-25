@@ -1,0 +1,8 @@
+#N canvas 0 0 295 350 10;
+#X declare -path ../src/;
+#X declare -lib xlab;
+#X obj 5 24 declare -path ../src/;
+#X obj 5 4 declare -lib xlab;
+#X obj 15 240 bhack.voice;
+#X msg 30 174 list ((4 4) (1 1 1 1 1));
+#X connect 3 0 2 0;

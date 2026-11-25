@@ -481,17 +481,10 @@ function b_voice:in_1_bpm(args)
 end
 
 -- ─────────────────────────────────────
-function b_voice:in_1_dddd(atoms)
-	local id = atoms[1]
-	local dddd = bhack.dddd:new_from_id(self, id)
-	if dddd == nil then
-		self:error("dddd not found")
-		return
-	end
-
-	local t = dddd:get_table()
+local function apply_voice_payload(self, dddd)
+	local t = dddd and dddd:get_table()
 	if type(t) ~= "table" then
-		self:error("dddd payload is not a table")
+		self:error("voice payload is not a table")
 		return
 	end
 	t = normalize_rhythm_tree_payload(t)
@@ -546,6 +539,23 @@ function b_voice:in_1_dddd(atoms)
 
 	self.svg = self.Score:getsvg()
 	self:repaint()
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_1_dddd(atoms)
+	local id = atoms[1]
+	local dddd = bhack.dddd:new_from_id(self, id)
+	if dddd == nil then
+		self:error("dddd not found")
+		return
+	end
+
+	apply_voice_payload(self, dddd)
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_1_list(atoms)
+	apply_voice_payload(self, bhack.dddd:new(self, atoms))
 end
 
 -- ─────────────────────────────────────
@@ -611,13 +621,7 @@ function b_voice:in_1_play()
 end
 
 -- ─────────────────────────────────────
-function b_voice:in_2_dddd(atoms)
-	local id = atoms[1]
-	local dddd = bhack.dddd:new_from_id(self, id)
-	if dddd == nil then
-		self:bhack_error("dddd not found")
-		return
-	end
+local function apply_chords_payload(self, dddd)
 	if dddd.depth == 1 then
 		error("dddd must be of depth 2 for chords/arpeggios")
 	else
@@ -631,6 +635,23 @@ function b_voice:in_2_dddd(atoms)
 			self.CHORDS[i].notes = raw[i]
 		end
 	end
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_2_dddd(atoms)
+	local id = atoms[1]
+	local dddd = bhack.dddd:new_from_id(self, id)
+	if dddd == nil then
+		self:bhack_error("dddd not found")
+		return
+	end
+
+	apply_chords_payload(self, dddd)
+end
+
+-- ─────────────────────────────────────
+function b_voice:in_2_list(atoms)
+	apply_chords_payload(self, bhack.dddd:new(self, atoms))
 end
 
 -- ─────────────────────────────────────
