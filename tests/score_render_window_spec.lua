@@ -40,4 +40,15 @@ notation:set_current_measure_position(1)
 notation:getsvg()
 assert(#notation:get_ctx().chords_rest_positions == 1600, "disabling the window must render the full score")
 
+local imported = score.Score:new(400, 100)
+imported:set_render_measure_count(4)
+imported:set_ctx(notation:get_ctx())
+imported:set_current_measure_position(397)
+imported:getsvg()
+local imported_bounds = imported:get_ctx().chords_rest_positions
+assert(
+	#imported_bounds == 16 and imported_bounds[1].chord == imported:get_ctx().chords[1585],
+	"imported scores must scroll"
+)
+
 print("score_render_window_spec.lua: all tests passed")

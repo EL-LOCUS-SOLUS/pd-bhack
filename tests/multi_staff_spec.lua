@@ -65,14 +65,20 @@ local pitches = { "E1", "F2", "F3", "G#4", "G5" }
 local expected_clefs = {
 	g = { "gClef" },
 	f = { "fClef" },
+	gg = { "gClef8va", "gClef" },
 	gf = { "gClef", "fClef" },
+	ff = { "fClef", "fClef8vb" },
+	ggf = { "gClef8va", "gClef", "fClef" },
 	gff = { "gClef", "fClef", "fClef8vb" },
 	ggff = { "gClef8va", "gClef", "fClef", "fClef8vb" },
 }
 local expected_staves = {
 	g = { 1, 1, 1, 1, 1 },
 	f = { 1, 1, 1, 1, 1 },
+	gg = { 2, 2, 2, 2, 1 },
 	gf = { 2, 2, 2, 1, 1 },
+	ff = { 2, 2, 1, 1, 1 },
+	ggf = { 3, 3, 3, 2, 1 },
 	gff = { 3, 3, 2, 1, 1 },
 	ggff = { 4, 4, 3, 2, 1 },
 }
@@ -99,8 +105,10 @@ for _, name in ipairs({ "bhack.voice", "bhack.chord-seq" }) do
 	object.Score:getsvg()
 	local onsets, last_onset = object.Score:get_onsets()
 
-	for _, clef in ipairs({ "g", "f", "gf", "gff", "ggff" }) do
+	for _, clef in ipairs({ "g", "f", "gg", "gf", "ff", "ggf", "gff", "ggff" }) do
 		object:in_1_clef({ clef })
+		local reopened = create(name, object.saved_args)
+		assert(reopened.Score.ctx.clef_key == clef)
 		for _, size in ipairs({ 4, 6, 10 }) do
 			object:in_1_staffsize({ size })
 			local svg = object.Score:getsvg()
