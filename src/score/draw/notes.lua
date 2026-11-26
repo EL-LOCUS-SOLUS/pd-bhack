@@ -86,16 +86,11 @@ local function update_bounds_with_glyph(state, anchor_x, glyph_metrics)
 	return state
 end
 
-local function compute_chord_notehead_center_x(state)
-	local chord = state.current_chord
-	if not chord or not chord.notes then
-		return state.current_chord_x or state.current_x or 0
-	end
-
+local function compute_chord_notehead_positions(state)
 	local left_edge, right_edge
 	local fallback_sum = 0
 	local fallback_count = 0
-	for _, note in ipairs(chord.notes) do
+	for _, note in ipairs(state.current_chord.notes) do
 		if note.render_x then
 			fallback_sum = fallback_sum + note.render_x
 			fallback_count = fallback_count + 1
@@ -113,13 +108,12 @@ local function compute_chord_notehead_center_x(state)
 		end
 	end
 
-	if left_edge and right_edge and right_edge > left_edge then
-		return (left_edge + right_edge) * 0.5
+	if left_edge and right_edge > left_edge then
+		return left_edge, (left_edge + right_edge) * 0.5
 	end
-	if fallback_count > 0 then
-		return fallback_sum / fallback_count
-	end
-	return state.current_chord_x or state.current_x or 0
+	local chord_x = state.current_chord_x
+	local center_x = fallback_count > 0 and fallback_sum / fallback_count or chord_x
+	return left_edge or chord_x, center_x
 end
 
 local function render_chord_dynamic(state)
@@ -138,7 +132,7 @@ local function render_chord_dynamic(state)
 		return state
 	end
 
-	local chord_x = compute_chord_notehead_center_x(state)
+	local chord_x = state.notehead_center_x
 	local clef_key = (state.ctx.clef and state.ctx.clef.config and state.ctx.clef.config.key) or "g"
 	local direction = rhythm.ensure_chord_stem_direction(clef_key, chord)
 	local staff = state.ctx.staff or {}
@@ -819,7 +813,7 @@ local function render_articulations(state)
 	local direction = rhythm.ensure_chord_stem_direction(clef_key, chord)
 	local preferred_above = direction == "down"
 	local gap = spacing * 0.65
-	local chord_x = compute_chord_notehead_center_x(state)
+	local chord_x = state.notehead_center_x
 
 	local function glyph_for_side(glyph_name, above)
 		if not glyph_name then
@@ -1150,6 +1144,7 @@ local function render_notes_and_chords(state)
 	state.skip_accidentals = nil
 
 	state = render_noteheads(state)
+	state.notehead_left_x, state.notehead_center_x = compute_chord_notehead_positions(state)
 	state = render_ledgers(state)
 	state = update_chord_vertical_bounds(state)
 
@@ -1209,6 +1204,7 @@ local function render_rests(state)
 		left = rest_left,
 		right = rest_right,
 		center = (rest_left + rest_right) * 0.5,
+		playbar_x = rest_left,
 		min_y = state.chord_min_y,
 		max_y = state.chord_max_y,
 	}
@@ -1263,6 +1259,7 @@ local function handle_common_bounds_and_layout(state)
 			left = left_edge,
 			right = right_edge,
 			center = (left_edge + right_edge) * 0.5,
+			playbar_x = state.notehead_left_x,
 			min_y = state.chord_min_y,
 			max_y = state.chord_max_y,
 		}

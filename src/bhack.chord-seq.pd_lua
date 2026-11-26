@@ -443,7 +443,7 @@ function b_chords:paint_layer_2(g)
 		local max_pos = math.max(0, self.width - padding)
 		pos = math.max(min_pos, math.min(pos, max_pos))
 		g:set_color(180, 75, 75)
-		g:fill_rect(math.max(0, pos - 1), padding, 1, self.height - (padding * 2))
+		g:fill_rect(math.max(0, pos - 0.5), padding, 1, self.height - (padding * 2))
 	end
 end
 

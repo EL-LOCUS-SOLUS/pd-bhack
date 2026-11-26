@@ -538,7 +538,7 @@ function Score:getsvg(chord_index)
 		view.page = page
 	end
 	local bounds = page and ctx.chords_rest_positions[index - page.first + 1]
-	return view.svg, bounds and bounds.left * (ctx.width / page.width), changed
+	return view.svg, bounds and bounds.playbar_x * (ctx.width / page.width), changed
 end
 
 return M

@@ -289,7 +289,7 @@ end
 
 function b_voice:show_playback_entry(entry, tick)
 	local bounds = self.rendered_chords[entry.chord]
-	if not bounds or bounds.left > self.width * 0.9 then
+	if not bounds or bounds.playbar_x > self.width * 0.9 then
 		local start_measure = render_window_start(entry.measure, #self.timeline.measure_starts)
 		if start_measure > self.current_measure then
 			self.current_measure = start_measure
@@ -909,8 +909,8 @@ function b_voice:paint_layer_2(g)
 	local bounds = entry and self.rendered_chords[entry.chord]
 	if bounds then
 		g:set_color(180, 75, 75)
-		local pos = math.min(bounds.left, self.width - padding)
-		g:fill_rect(math.max(0, pos - 1), padding, 1, self.height - (padding * 2))
+		local pos = math.min(bounds.playbar_x, self.width - padding)
+		g:fill_rect(math.max(0, pos - 0.5), padding, 1, self.height - (padding * 2))
 	end
 end
 
