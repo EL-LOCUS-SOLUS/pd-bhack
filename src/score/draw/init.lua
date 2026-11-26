@@ -454,12 +454,105 @@ local function finalize_svg_groups(state)
 		state.chords_rest_positions
 end
 
+local function place_chord(state, chord, index, x)
+	state.current_position_index = index
+	state.current_chord = chord
+	state.current_x = x
+	-- The page layout already sets the clearance for the entire chord.
+	state.layout_right = -math.huge
+	notes.render_elements(state)
+	return state.recorded_bounds
+end
+
+local function shallow_copy(source)
+	local copy = {}
+	for key, value in pairs(source) do
+		copy[key] = value
+	end
+	return copy
+end
+
+local function measure_chord(state, chord, index)
+	-- Placement writes coordinates and sorts notes. Keep those changes in the
+	-- drawing pass so playback and offscreen chords retain their original data.
+	local sample = shallow_copy(chord)
+	if chord.notes then
+		sample.notes = {}
+		for i, note in ipairs(chord.notes) do
+			sample.notes[i] = shallow_copy(note)
+			sample.notes[i].chord = sample
+		end
+	end
+	-- Reserve space for a dynamic even if this chord starts a new page.
+	state.previous_chord_dynamic_glyph = nil
+	return place_chord(state, sample, index, 0)
+end
+
+local function finish_chord_page(ctx, layout, page, staff_right, last_right)
+	-- A chord wider than the staff gets its own page with a wider SVG viewBox.
+	page.width = math.max(ctx.width, last_right + ctx.staff.left)
+	local extra_gap = math.max(0, staff_right - last_right) / #page.anchors
+	local page_index = #layout.pages + 1
+	for i, anchor in ipairs(page.anchors) do
+		page.anchors[i] = anchor + (i - 1) * extra_gap
+		layout.page_by_chord[page.first + i - 1] = page_index
+	end
+	layout.pages[page_index] = page
+end
+
+local function extend_chord_pages(ctx, layout, target_index)
+	if layout.page_by_chord[target_index] or not ctx.chords[target_index] then
+		return
+	end
+
+	local measure_ctx = setmetatable({ measure_only = true }, { __index = ctx })
+	local state = create_initial_state(measure_ctx, ctx.chords)
+	local staff_right = state.staff.left + state.staff.width
+	local gap = state.staff_spacing * 0.75
+	local page, last_right
+
+	for index = #layout.page_by_chord + 1, #ctx.chords do
+		local bounds = layout.next_bounds or measure_chord(state, ctx.chords[index], index)
+		layout.next_bounds = nil
+		local width = bounds.right - bounds.left
+		local left = page and last_right + gap or state.note_start_x
+		if page and left + width > staff_right then
+			finish_chord_page(ctx, layout, page, staff_right, last_right)
+			if index > target_index then
+				-- The first chord of the next page has already been measured.
+				layout.next_bounds = bounds
+				return
+			end
+			page = nil
+			left = state.note_start_x
+		end
+		if not page then
+			page = { first = index, anchors = {} }
+		end
+		page.anchors[#page.anchors + 1] = left - bounds.left
+		last_right = left + width
+	end
+	finish_chord_page(ctx, layout, page, staff_right, last_right)
+end
+
 -- ─────────────────────────────────────
-local function draw_sequence(ctx, chords, spacing_sequence, measure_meta)
+local function draw_sequence(ctx, chords, spacing_sequence, measure_meta, chord_page)
 	utils.log("draw_sequence", 2)
 	spacing_sequence = spacing_sequence or {}
 	measure_meta = measure_meta or {}
 	local state = create_initial_state(ctx, chords, spacing_sequence, measure_meta)
+	if chord_page then
+		for i, anchor in ipairs(chord_page.anchors) do
+			local index = chord_page.first + i - 1
+			local bounds = place_chord(state, chords[index], index, anchor)
+			bounds.index = index
+			bounds.chord = state.current_chord
+			bounds.is_rest = bounds.chord.is_rest or false
+			state.chords_rest_positions[i] = bounds
+		end
+		return finalize_svg_groups(state)
+	end
+
 	state.current_x = state.note_start_x
 	state = prepare_measure_lookups(state)
 	state = prepare_tuplet_lookups(state)
@@ -540,4 +633,5 @@ end
 return {
 	draw_sequence = draw_sequence,
 	finalize_svg_groups = finalize_svg_groups,
+	extend_chord_pages = extend_chord_pages,
 }

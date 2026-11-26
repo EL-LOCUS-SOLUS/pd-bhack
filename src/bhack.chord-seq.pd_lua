@@ -26,22 +26,23 @@ function b_chords:initialize(_, args)
 	self.playclock = pd.Clock:new():register(self, "playing_clock")
 	self.clear_after_play = pd.Clock:new():register(self, "clear_playbar")
 	self.playbar_position = 0
-	self.last_valid_position = 0
-	self.playing = false
+	self.is_playing = false
 	self.bpm = 120
-	self.current_measure = 1
 	self.entry = nil
 	self.previous_entry = nil
+	self.last_valid_position = nil
 
 	-- Initialize Score
 	self.Score:set_material({
 		clef = self.current_clef_key,
 		render_tree = false,
+		paginate_chords = true,
 		tree = self.rhythm_tree_spec,
 		chords = self.CHORDS,
 		bpm = self.bpm,
 		draw = true,
 	})
+	self.svg = self.Score:getsvg()
 
 	return true
 end
@@ -90,8 +91,7 @@ function b_chords:clear_playbar()
 
 	self.previous_entry = nil
 	self.entry = nil
-	self.last_draw_position = nil
-	self.last_valid_position = 0
+	self.last_valid_position = nil
 
 	-- sinal de término
 	self.is_playing = false
@@ -103,10 +103,8 @@ end
 -- ─────────────────────────────────────
 function b_chords:playing_clock()
 	self.playbar_position = self.playbar_position + 1
-	self.onsets, self.last_onset = self.Score:get_onsets()
-	self.last_onset = self.last_onset or 0
 
-	if self.playbar_position > self.last_onset then
+	if self.playbar_position > (self.last_onset or 0) then
 		self.previous_entry = self.entry
 		self.entry = nil
 		if self.previous_entry then
@@ -119,15 +117,18 @@ function b_chords:playing_clock()
 
 	local entry = self.onsets[self.playbar_position]
 	if entry ~= nil then
-		local pos = tonumber(entry.left) or self.last_valid_position or 0
-		self.last_draw_position = pos
-		self.last_valid_position = pos
-		self.last_was_rest = entry.is_rest
+		local svg, position, page_changed = self.Score:getsvg(entry.index)
+		self.svg = svg
+		self.last_valid_position = position
 
 		self.previous_entry = self.entry
 		self.entry = entry
 		self:midiout()
-		self:repaint(2)
+		if page_changed then
+			self:repaint()
+		else
+			self:repaint(2)
+		end
 	end
 
 	-- agendar próximo tick (1 ms)
@@ -253,6 +254,7 @@ local function build_candidate_score(self, chords)
 	score:set_material({
 		clef = self.current_clef_key,
 		render_tree = false,
+		paginate_chords = true,
 		tree = self.rhythm_tree_spec,
 		chords = chords,
 		bpm = self.bpm,
@@ -295,6 +297,10 @@ local function apply_chords_payload(self, dddd)
 	self.CHORDS = candidate_chords
 	self.Score = candidate_score
 	self.svg = candidate_svg
+	self.last_valid_position = nil
+	if self.is_playing then
+		self.onsets, self.last_onset = self.Score:get_onsets()
+	end
 	self:repaint()
 	return true
 end
@@ -303,21 +309,24 @@ end
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
 function b_chords:refresh_score_view()
+	local svg, position = self.Score:getsvg()
+	self.svg = svg
+	if self.last_valid_position then
+		self.last_valid_position = position
+	end
 	self:repaint()
 end
 
 -- ─────────────────────────────────────
 function b_chords:in_1_bpm(args)
-	self.bpm = args and args[1]
-	self.Score:set_material({
-		clef = self.current_clef_key,
-		render_tree = false,
-		tree = self.rhythm_tree_spec,
-		chords = normalize_chords_list(self.CHORDS),
-		bpm = self.bpm,
-		draw = true,
-	})
-	self:repaint()
+	local bpm = tonumber(args and args[1])
+	if bpm and bpm > 0 and bpm < math.huge then
+		self.bpm = bpm
+		self.Score:set_bpm(bpm)
+		if self.is_playing then
+			self.onsets, self.last_onset = self.Score:get_onsets()
+		end
+	end
 end
 
 -- ─────────────────────────────────────
@@ -331,11 +340,13 @@ end
 
 -- ─────────────────────────────────────
 function b_chords:in_1_play()
+	if self.is_playing then
+		self:in_1_stop()
+	end
 	self.onsets, self.last_onset = self.Score:get_onsets()
 	self.entry = nil
 	self.previous_entry = nil
-	self.last_draw_position = nil
-	self.last_valid_position = 0
+	self.last_valid_position = nil
 	self.playbar_position = -1
 	self.playclock:delay(1)
 	self.is_playing = true
@@ -349,11 +360,8 @@ function b_chords:in_1_stop()
 
 	self.entry = nil
 	self.previous_entry = nil
-	self.last_draw_position = nil
-	self.last_valid_position = 0
-	self.last_was_rest = nil
+	self.last_valid_position = nil
 	self.playbar_position = 0
-	self.playing = false
 	self.is_playing = false
 	self:repaint(2)
 end
@@ -396,12 +404,6 @@ end
 
 -- ─────────────────────────────────────
 function b_chords:paint(g)
-	self.svg = self.Score:getsvg()
-
-	if self.svg == nil then
-		error("Error generating SVG")
-	end
-
 	g:set_color(240, 240, 240)
 	g:fill_all()
 	g:draw_svg(self.svg, 0, 0)
@@ -436,15 +438,12 @@ function b_chords:paint_layer_2(g)
 
 	-- Keep the playbar aligned with the current entry and inside the object.
 	local pos = self.last_valid_position
-	if pos == nil and self.entry and self.entry.left then
-		pos = self.entry.left
-	end
-	if (self.is_playing or self.entry ~= nil) and pos ~= nil then
+	if self.is_playing and pos then
 		local min_pos = math.min(padding, math.max(0, self.width - padding))
 		local max_pos = math.max(0, self.width - padding)
-		pos = math.max(min_pos, math.min(tonumber(pos) or min_pos, max_pos))
+		pos = math.max(min_pos, math.min(pos, max_pos))
 		g:set_color(180, 75, 75)
-		g:fill_rect(pos - 1, padding, 1, self.height - (padding * 2))
+		g:fill_rect(math.max(0, pos - 1), padding, 1, self.height - (padding * 2))
 	end
 end
 

@@ -38,13 +38,8 @@ function b_voice:initialize(_, args)
 
 	-- Playback
 	self.playclock = pd.Clock:new():register(self, "playing_clock")
-	self.clear_after_play = pd.Clock:new():register(self, "clear_playbar")
-	self.playbar_position = 0
-	self.playbar_entry_index = nil
-	self.last_valid_position = 0
-	self.playing = false
+	self.is_playing = false
 	self.bpm = 120
-	self.current_measure = 1
 	self.entry = nil
 	self.previous_entry = nil
 	self.midiplayback = true
@@ -76,39 +71,34 @@ function b_voice:initialize(_, args)
 		draw = true,
 	})
 
-	self.svg = self.Score:getsvg()
-	self:repaint()
+	self:load_playback_score()
 	return true
 end
 
 -- ─────────────────────────────────────
 function b_voice:midiout()
+	local entry, previous = self.entry, self.previous_entry
 	if self.midiplayback then
-		if
-			self.previous_entry ~= nil
-			and self.previous_entry.chord
-			and not self.previous_entry.chord.is_tied
-			and not self.previous_entry.chord.is_rest
-		then
-			for i = 1, #self.previous_entry.chord.notes do
-				local midi = self.previous_entry.chord.notes[i].midi
-				self:outlet(1, "list", { midi, 0 })
-			end
-		end
-
-		if self.entry ~= nil and self.entry.chord and not self.entry.is_rest then
-			if self.previous_entry == nil or not (self.previous_entry.chord and self.previous_entry.chord.is_tied) then
-				for i = 1, #self.entry.chord.notes do
-					local midi = self.entry.chord.notes[i].midi
-					self:outlet(1, "list", { midi, 60 })
+		if previous and not previous.chord.is_tied and not previous.chord.is_rest then
+			for _, note in ipairs(previous.chord.notes) do
+				self:outlet(1, "list", { note.midi, 0 })
+				if not self.entry or self.entry.chord ~= entry.chord then
+					return
 				end
 			end
 		end
-	else
-		if self.entry then
-			local ddddnew = bhack.dddd:new_from_table(self, self.entry.chord)
-			ddddnew:output(1)
+
+		if entry and not entry.chord.is_rest and not (previous and previous.chord.is_tied) then
+			for _, note in ipairs(entry.chord.notes) do
+				self:outlet(1, "list", { note.midi, 60 })
+				if not self.entry or self.entry.chord ~= entry.chord then
+					return
+				end
+			end
 		end
+	elseif entry then
+		local ddddnew = bhack.dddd:new_from_table(self, entry.chord)
+		ddddnew:output(1)
 	end
 end
 
@@ -131,70 +121,40 @@ local function release_entry(self, entry)
 end
 
 -- ─────────────────────────────────────
-function b_voice:clear_playbar()
-	release_entry(self, self.previous_entry)
-
-	self.previous_entry = nil
-
-	-- sinal de término
-	self.current_measure = 1
-	self.Score:set_current_measure_position(self.current_measure)
-	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
-		self.Score:get_onsets(self.playbar_position)
-	self.last_advanced_from_measure = nil
-	self.last_advanced_from_offset = nil
-	self.awaiting_render = false
-	self.is_playing = false
-	self.playbar_position = 0
-	self.playbar_entry_index = nil
-	self:outlet(2, "bang", { "bang" })
-	self.svg = self.Score:getsvg()
-	self:repaint()
+local function window_start_tick(self)
+	return self.timeline.measure_starts[self.current_measure] or 0
 end
 
 -- ─────────────────────────────────────
 function b_voice:playing_clock()
-	-- if self.awaiting_render then
-	-- 	self.playclock:delay(1)
-	-- 	return
-	-- end
-
-	self.playbar_position = self.playbar_position + 1
-	self.playbar_entry_index = nil
-	local tick = math.floor(self.playbar_position)
-	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
-		self.Score:get_onsets(tick)
-	self.last_onset = self.last_onset or 0
-
-	if tick > self.last_onset then
-		self.previous_entry = self.entry
-		self.entry = nil
-		if self.previous_entry and self.previous_entry.duration then
-			self.clear_after_play:delay(self.previous_entry.duration)
-		else
-			self.clear_after_play:delay(0)
-		end
+	if not self.is_playing then
 		return
 	end
 
-	self.playbar_position = tick
-	local entry = self.onsets[tick]
-	local pos = (entry and entry.left) or self.last_valid_position or 0
-	local is_rest = entry and entry.is_rest
-
-	if pos ~= self.last_draw_position then
-		self.last_draw_position = pos
-		self.last_valid_position = pos
-		self.last_was_rest = is_rest
-
+	self.playbar_position = self.playbar_position + 1
+	self.playbar_entry_index = nil
+	local tick = window_start_tick(self) + self.playbar_position
+	local timeline = self.timeline
+	local entry = timeline.entries[self.next_entry]
+	while entry and entry.tick <= tick do
+		self.next_entry = self.next_entry + 1
 		self.previous_entry = self.entry
 		self.entry = entry
+		self:show_playback_entry(entry, tick)
 		self:midiout()
-		self:repaint(2)
+		-- Outlet messages can synchronously stop, seek, or restart playback.
+		if self.entry ~= entry then
+			return
+		end
+		entry = timeline.entries[self.next_entry]
 	end
 
-	-- agendar próximo tick (1 ms)
-	self.playclock:delay(1)
+	if tick >= timeline.end_tick then
+		self:in_1_stop()
+		self:outlet(2, "bang", { "bang" })
+	else
+		self.playclock:delay(1)
+	end
 end
 
 --╭─────────────────────────────────────╮
@@ -269,151 +229,52 @@ local function get_max_measure_end_x(ctx)
 end
 
 -- ─────────────────────────────────────
-local function build_measure_start_offsets_ms(ctx)
-	if not ctx then
-		return nil
-	end
-	local measures = ctx.measures or {}
+local function build_playback_timeline(ctx)
+	local timeline = { entries = {}, playable = {}, measure_starts = {}, end_tick = 0 }
 	local bpm = tonumber(ctx.bpm)
-	if not bpm or bpm <= 0 then
-		return nil
+	if not bpm or not (bpm > 0 and bpm < math.huge) then
+		return timeline
 	end
+
 	local ms_per_whole = (60000 / bpm) * 4
-	local starts = {}
+	local chords = ctx.chords or {}
 	local cursor = 0
-	for i, m in ipairs(measures) do
-		starts[i] = cursor
-		for _, entry in ipairs(m.entries or {}) do
-			local duration = (entry and (entry.duration_whole or entry.duration)) or 0
-			cursor = cursor + (duration * ms_per_whole)
-		end
-	end
-	return starts, cursor
-end
-
--- ─────────────────────────────────────
-local function entry_duration_whole_value(entry)
-	if not entry then
-		return 0
-	end
-	local duration_whole = tonumber(entry.duration_whole)
-	if duration_whole then
-		return duration_whole
-	end
-	return tonumber(entry.duration) or 0
-end
-
--- ─────────────────────────────────────
-local function is_countable_entry(entry, prev_entry)
-	if not entry then
-		return false
-	end
-	if entry.is_rest then
-		return false
-	end
-	if prev_entry and prev_entry.is_tied then
-		return false
-	end
-	return true
-end
-
--- ─────────────────────────────────────
-local function find_entry_by_index(ctx, index)
-	if not ctx then
-		return nil
-	end
-	local measures = ctx.measures or {}
-	local bpm = tonumber(ctx.bpm)
-	if not bpm or bpm <= 0 then
-		return nil
-	end
-	local ms_per_whole = (60000 / bpm) * 4
-	local cursor = 0
-	local entry_index = 0
-	local prev_entry = nil
-	for i, m in ipairs(measures) do
-		local measure_start = cursor
-		for _, entry in ipairs(m.entries or {}) do
-			if is_countable_entry(entry, prev_entry) then
-				entry_index = entry_index + 1
-				if entry_index == index then
-					local offset_ms = cursor - measure_start
-					return {
-						measure_index = i,
-						measure_offset_ms = offset_ms,
-						absolute_ms = cursor,
-					},
-						entry_index
-				end
+	local previous_chord
+	for measure_index, measure in ipairs(ctx.measures or {}) do
+		timeline.measure_starts[measure_index] = math.floor(cursor)
+		for _, timed_entry in ipairs(measure.entries or {}) do
+			local index = #timeline.entries + 1
+			local chord = chords[index] or timed_entry
+			local entry = {
+				index = index,
+				chord = chord,
+				measure = measure_index,
+				tick = math.floor(cursor),
+			}
+			timeline.entries[entry.index] = entry
+			if not chord.is_rest and not (previous_chord and previous_chord.is_tied) then
+				timeline.playable[#timeline.playable + 1] = entry
 			end
-			local duration_whole = entry_duration_whole_value(entry)
-			cursor = cursor + (duration_whole * ms_per_whole)
-			prev_entry = entry
+			local duration = tonumber(timed_entry.duration_whole) or tonumber(timed_entry.duration) or 0
+			cursor = cursor + duration * ms_per_whole
+			previous_chord = chord
 		end
 	end
-	return nil, entry_index
+	timeline.end_tick = math.ceil(cursor)
+	return timeline
 end
 
--- ─────────────────────────────────────
-local function find_entry_index_at_tick(ctx, absolute_tick)
-	if not ctx then
-		return 0, 0
-	end
-	local measures = ctx.measures or {}
-	local bpm = tonumber(ctx.bpm)
-	if not bpm or bpm <= 0 then
-		return 0, 0
-	end
-	local ms_per_whole = (60000 / bpm) * 4
-	local cursor = 0
-	local current_index = 0
-	local entry_index = 0
-	local target_tick = math.max(0, tonumber(absolute_tick) or 0)
-	local prev_entry = nil
-	for _, m in ipairs(measures) do
-		for _, entry in ipairs(m.entries or {}) do
-			if is_countable_entry(entry, prev_entry) then
-				entry_index = entry_index + 1
-				if cursor <= target_tick then
-					current_index = entry_index
-				end
-			end
-			cursor = cursor + (entry_duration_whole_value(entry) * ms_per_whole)
-			prev_entry = entry
+local function first_entry_at_or_after(entries, tick)
+	local first, last = 1, #entries + 1
+	while first < last do
+		local mid = math.floor((first + last) / 2)
+		if entries[mid].tick < tick then
+			first = mid + 1
+		else
+			last = mid
 		end
 	end
-	return current_index, entry_index
-end
-
--- ─────────────────────────────────────
-local function absolute_tick_from_measure_offset(ctx, measure_index, offset_ms)
-	local starts = build_measure_start_offsets_ms(ctx)
-	if not starts then
-		return nil
-	end
-	local measure_start = starts[measure_index]
-	if type(measure_start) ~= "number" then
-		return nil
-	end
-	local offset = tonumber(offset_ms) or 0
-	if offset < 0 then
-		offset = 0
-	end
-	return measure_start + offset
-end
-
--- ─────────────────────────────────────
-local function local_tick_from_absolute(ctx, start_measure, absolute_tick)
-	local starts = build_measure_start_offsets_ms(ctx)
-	if not starts then
-		return tonumber(absolute_tick) or 0
-	end
-	local measure_start = starts[start_measure]
-	if type(measure_start) ~= "number" then
-		return tonumber(absolute_tick) or 0
-	end
-	local absolute = tonumber(absolute_tick) or 0
-	return absolute - measure_start
+	return first
 end
 
 -- ─────────────────────────────────────
@@ -424,6 +285,21 @@ local function render_window_start(measure_index, total_measures)
 	local remaining = math.max(0, total - RENDER_MEASURE_COUNT)
 	local last_start = 1 + (math.ceil(remaining / RENDER_MEASURE_STEP) * RENDER_MEASURE_STEP)
 	return math.min(candidate, last_start)
+end
+
+function b_voice:show_playback_entry(entry, tick)
+	local bounds = self.rendered_chords[entry.chord]
+	if not bounds or bounds.left > self.width * 0.9 then
+		local start_measure = render_window_start(entry.measure, #self.timeline.measure_starts)
+		if start_measure > self.current_measure then
+			self.current_measure = start_measure
+			self.playbar_position = tick - window_start_tick(self)
+			self.Score:set_current_measure_position(start_measure)
+			self:refresh_score_view()
+			return
+		end
+	end
+	self:repaint(2)
 end
 
 -- ─────────────────────────────────────
@@ -525,21 +401,15 @@ function b_voice:receive(sel, atoms)
 			self:in_1_play()
 		end
 	elseif key == 72 or key == 104 or key == 76 or key == 108 then
-		local ctx = self.Score and self.Score.ctx
-		if not ctx then
+		local playable = self.timeline.playable
+		if #playable == 0 then
 			return
 		end
-
-		local absolute_tick =
-			absolute_tick_from_measure_offset(ctx, self.current_measure or 1, self.playbar_position or 0)
-		local inferred_index, total = find_entry_index_at_tick(ctx, absolute_tick)
-		if total == 0 then
-			return
-		end
-		local current_index = self.playbar_entry_index or inferred_index
+		local tick = window_start_tick(self) + self.playbar_position
+		local current_index = self.playbar_entry_index or (first_entry_at_or_after(playable, tick + 1) - 1)
 
 		local direction = (key == 72 or key == 104) and -1 or 1
-		local target_index = math.max(1, math.min(total, current_index + direction))
+		local target_index = math.max(1, math.min(#playable, current_index + direction))
 		if target_index ~= current_index then
 			self:in_1_playbarpos({ target_index })
 		end
@@ -565,7 +435,32 @@ end
 --╰─────────────────────────────────────╯
 function b_voice:refresh_score_view()
 	self.svg = self.Score:getsvg()
+	self.rendered_chords = {}
+	for _, bounds in ipairs(self.Score.ctx.chords_rest_positions or {}) do
+		self.rendered_chords[bounds.chord] = bounds
+	end
 	self:repaint()
+end
+
+local function reset_playback_position(self)
+	self.entry = nil
+	self.previous_entry = nil
+	self.next_entry = 1
+	self.playbar_position = self.is_playing and -1 or 0
+	self.playbar_entry_index = nil
+end
+
+function b_voice:load_playback_score()
+	local sounding = self.is_playing and self.entry
+	self.timeline = build_playback_timeline(self.Score.ctx)
+	reset_playback_position(self)
+	self.current_measure = 1
+	self.Score:set_current_measure_position(1)
+	self:refresh_score_view()
+	if self.is_playing then
+		self.playclock:delay(1)
+		release_entry(self, sounding)
+	end
 end
 
 -- ─────────────────────────────────────
@@ -579,18 +474,34 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:in_1_bpm(args)
-	self.bpm = args and args[1]
-	self.Score:set_material({
-		clef = self.current_clef_key,
-		render_tree = true,
-		tree = self.rhythm_tree_spec,
-		chords = self.CHORDS,
-		bpm = self.bpm,
-		draw = true,
-	})
+	local bpm = tonumber(args and args[1])
+	if not bpm or not (bpm > 0 and bpm < math.huge) then
+		return
+	end
 
-	self.svg = self.Score:getsvg()
-	self:repaint()
+	local old_bpm = tonumber(self.Score:get_bpm())
+	self.bpm = bpm
+	if old_bpm == bpm then
+		return
+	end
+	local tick = window_start_tick(self) + self.playbar_position
+	local entry = self.entry
+	self.Score:set_bpm(bpm)
+	self.timeline = build_playback_timeline(self.Score.ctx)
+	self.entry = entry and self.timeline.entries[entry.index]
+	if self.playbar_entry_index then
+		local selected = self.timeline.playable[self.playbar_entry_index]
+		self.playbar_position = selected.tick - window_start_tick(self) - (self.is_playing and 1 or 0)
+	elseif self.entry then
+		local elapsed = math.max(0, tick - entry.tick)
+		local next_entry = self.timeline.entries[self.next_entry]
+		local next_tick = next_entry and next_entry.tick or self.timeline.end_tick
+		local new_tick = self.entry.tick + math.floor(elapsed * (old_bpm or bpm) / bpm)
+		self.playbar_position = math.max(self.entry.tick, math.min(new_tick, next_tick - 1)) - window_start_tick(self)
+	end
+	if self.is_playing then
+		self.playclock:delay(1)
+	end
 end
 
 -- ─────────────────────────────────────
@@ -602,9 +513,6 @@ local function apply_voice_payload(self, dddd)
 	end
 	t = normalize_rhythm_tree_payload(t)
 
-	self.playbar_position = 0
-	self.playbar_entry_index = nil
-
 	-- Accept either a full rendering ctx (already built) or a material table.
 	-- voicebuilder outputs a material-like table (clef/tree/chords/bpm) without `draw`,
 	-- but Score:set_material only computes spacing_sequence when draw is truthy.
@@ -613,8 +521,7 @@ local function apply_voice_payload(self, dddd)
 		self.Score:set_ctx(t)
 		self.Score.clef_name_or_key = self.clef_override or t.clef_key or t.clef.name or self.current_clef_key
 		self.Score:layout(true)
-		self.svg = self.Score:getsvg()
-		self:repaint()
+		self:load_playback_score()
 		return
 	end
 
@@ -630,8 +537,7 @@ local function apply_voice_payload(self, dddd)
 			draw = true,
 		})
 
-		self.svg = self.Score:getsvg()
-		self:repaint()
+		self:load_playback_score()
 		return
 	end
 
@@ -651,8 +557,7 @@ local function apply_voice_payload(self, dddd)
 	end
 	self.Score:set_material(t)
 
-	self.svg = self.Score:getsvg()
-	self:repaint()
+	self:load_playback_score()
 end
 
 -- ─────────────────────────────────────
@@ -679,49 +584,36 @@ function b_voice:in_1_playbarpos(args)
 		self:error("[bhack.voice] playbarpos expects a 1-based index")
 		return
 	end
-	local ctx = self.Score and self.Score.ctx
-	if not ctx then
-		self:error("[bhack.voice] Score not initialized")
+	local target = self.timeline.playable[index]
+	if not target then
+		self:error("[bhack.voice] playbarpos index out of range (1-" .. #self.timeline.playable .. ")")
 		return
 	end
 
-	local info, total = find_entry_by_index(ctx, index)
-	if not info then
-		self:error("[bhack.voice] playbarpos index out of range (1-" .. tostring(total) .. ")")
-		return
-	end
-	if self.is_playing then
-		release_entry(self, self.entry or self.previous_entry)
-	end
-
-	local total_measures = #(ctx.measures or {})
-	self.current_measure = render_window_start(info.measure_index, total_measures)
+	local sounding = self.is_playing and self.entry
+	local start_measure = render_window_start(target.measure, #self.timeline.measure_starts)
+	local window_changed = start_measure ~= self.current_measure
+	self.current_measure = start_measure
 	self.playbar_entry_index = index
-	self.Score:set_current_measure_position(self.current_measure)
-
-	local target_tick = math.max(0, math.floor(local_tick_from_absolute(ctx, self.current_measure, info.absolute_ms)))
+	self.next_entry = target.index
+	self.playbar_position = target.tick - window_start_tick(self)
+	self.previous_entry = nil
 	if self.is_playing then
-		self.playbar_position = target_tick - 1
-	else
-		self.playbar_position = target_tick
-	end
-
-	self.svg = self.Score:getsvg()
-	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
-		self.Score:get_onsets(math.max(0, target_tick))
-	self.last_onset = self.last_onset or 0
-	local target_entry = self.onsets[target_tick]
-	self.last_valid_position = (target_entry and target_entry.left) or self.last_valid_position or 0
-	if self.is_playing then
-		self.last_draw_position = nil
+		self.playbar_position = self.playbar_position - 1
 		self.entry = nil
 	else
-		self.last_draw_position = self.last_valid_position
-		self.entry = target_entry
+		self.entry = target
 	end
-	self.previous_entry = nil
-	self:repaint()
-	self:repaint(2)
+	if window_changed then
+		self.Score:set_current_measure_position(start_measure)
+		self:refresh_score_view()
+	else
+		self:repaint(2)
+	end
+	if self.is_playing then
+		self.playclock:delay(1)
+		release_entry(self, sounding)
+	end
 end
 
 -- ─────────────────────────────────────
@@ -735,49 +627,39 @@ end
 
 -- ─────────────────────────────────────
 function b_voice:in_1_play()
+	local sounding = self.is_playing and self.entry
 	if self.is_playing then
-		self.last_onset = -1
-		self.playbar_position = -1
-		return
+		self.playbar_position = 0
+		self.playbar_entry_index = nil
 	end
 
-	local start_tick = tonumber(self.playbar_position) or 0
-	if start_tick < 0 then
-		start_tick = 0
-	end
-
-	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
-		self.Score:get_onsets(start_tick)
-	self.last_onset = start_tick - 1
+	local selected = self.timeline.playable[self.playbar_entry_index]
+	local start_tick = math.max(0, self.playbar_position)
+	self.next_entry = selected and selected.index
+		or first_entry_at_or_after(self.timeline.entries, window_start_tick(self) + start_tick)
 	self.playbar_position = start_tick - 1
-	self.playclock:delay(1)
+	self.entry = nil
+	self.previous_entry = nil
 	self.is_playing = true
+	self.playclock:delay(1)
+	self:repaint(2)
+	release_entry(self, sounding)
 end
 
 -- ─────────────────────────────────────
 function b_voice:in_1_stop()
 	self.playclock:unset()
-	self.clear_after_play:unset()
-	release_entry(self, self.entry or self.previous_entry)
-
-	self.entry = nil
-	self.previous_entry = nil
-	self.last_draw_position = nil
-	self.last_valid_position = 0
-	self.last_was_rest = nil
-	self.current_measure = 1
-	self.Score:set_current_measure_position(self.current_measure)
-	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset = self.Score:get_onsets(0)
-	self.last_advanced_from_measure = nil
-	self.last_advanced_from_offset = nil
-	self.awaiting_render = false
-	self.playbar_position = 0
-	self.playbar_entry_index = nil
-	self.playing = false
+	local sounding = self.is_playing and self.entry
 	self.is_playing = false
-	self.svg = self.Score:getsvg()
-	self:repaint()
-	self:repaint(2)
+	reset_playback_position(self)
+	if self.current_measure ~= 1 then
+		self.current_measure = 1
+		self.Score:set_current_measure_position(1)
+		self:refresh_score_view()
+	else
+		self:repaint(2)
+	end
+	release_entry(self, sounding)
 end
 
 -- ─────────────────────────────────────
@@ -991,13 +873,6 @@ function b_voice:paint(g)
 		error("Error generating SVG")
 	end
 
-	self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
-		self.Score:get_onsets(self.playbar_position)
-	self.awaiting_render = false
-
-	local max_measure_end_x = get_max_measure_end_x(self.Score and self.Score.ctx)
-	self.max_measure_end_x = max_measure_end_x
-
 	g:set_color(247, 247, 247)
 	g:fill_all()
 	g:draw_svg(self.svg, 0, 0)
@@ -1030,70 +905,12 @@ function b_voice:paint_layer_2(g)
 		g:fill_rect(padding + rect_width + 2, padding, rect_width, rect_height)
 	end
 
-	-- barra que indica a posição atual
-	local pos = self.last_valid_position
-	if pos == nil and self.entry and self.entry.left then
-		pos = self.entry.left
-	end
-	if (self.is_playing or self.entry ~= nil) and pos ~= nil then
+	local entry = self.entry or self.timeline.playable[self.playbar_entry_index]
+	local bounds = entry and self.rendered_chords[entry.chord]
+	if bounds then
 		g:set_color(180, 75, 75)
-		local max_pos = math.max(0, self.width - padding)
-		if pos > max_pos then
-			pos = max_pos
-		end
-		g:fill_rect(pos - 1, padding, 1, self.height - (padding * 2))
-	end
-
-	if self.is_playing and pos and pos > self.width * 0.9 then
-		local play_measure = self.current_play_measure or self.current_measure
-		local offset_ms = self.current_play_measure_offset or 0
-		local total_measures = (self.Score and self.Score.ctx and #(self.Score.ctx.measures or {})) or 0
-		if total_measures < 1 then
-			return
-		end
-		local target_measure = render_window_start(play_measure or self.current_measure, total_measures)
-
-		local allow_update = target_measure > (self.current_measure or 1)
-		if allow_update then
-			self.last_advanced_from_measure = play_measure
-			self.last_advanced_from_offset = offset_ms
-
-			local absolute_tick =
-				absolute_tick_from_measure_offset(self.Score and self.Score.ctx, play_measure, offset_ms)
-			if absolute_tick == nil then
-				absolute_tick = math.max(0, tonumber(self.playbar_position) or 0)
-			end
-			local target_local_tick =
-				local_tick_from_absolute(self.Score and self.Score.ctx, target_measure, absolute_tick)
-			if target_local_tick < 0 then
-				target_local_tick = 0
-			end
-
-			self.current_measure = target_measure
-			self.Score:set_current_measure_position(self.current_measure)
-			-- Refresh the render window immediately after changing start measure.
-			-- get_onsets depends on chords_rest_positions from the latest SVG pass.
-			self.svg = self.Score:getsvg()
-			self.onsets, self.last_onset, self.current_play_measure, self.current_play_measure_offset =
-				self.Score:get_onsets(target_local_tick)
-			local best_entry = nil
-			local best_time = -1
-			for t, entry in pairs(self.onsets) do
-				if t <= target_local_tick and t > best_time then
-					best_time = t
-					best_entry = entry
-				end
-			end
-			if not best_entry then
-				best_entry = self.onsets[0]
-			end
-			self.playbar_position = math.max(0, math.floor(target_local_tick)) - 1
-			self.last_valid_position = (best_entry and best_entry.left) or self.last_valid_position or 0
-			self.last_draw_position = self.last_valid_position
-			self.entry = best_entry or self.entry
-			self.awaiting_render = true
-			self:repaint()
-		end
+		local pos = math.min(bounds.left, self.width - padding)
+		g:fill_rect(math.max(0, pos - 1), padding, 1, self.height - (padding * 2))
 	end
 end
 

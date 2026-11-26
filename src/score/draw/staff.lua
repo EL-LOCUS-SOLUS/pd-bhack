@@ -1,7 +1,7 @@
 local utils = require("score/functions/utils")
 local render_utils = require("score/draw/utils")
 
-local function draw_staff(ctx)
+local function draw_staff(ctx, width)
 	utils.log("draw_staff", 2)
 	local lines = {}
 
@@ -16,7 +16,7 @@ local function draw_staff(ctx)
 					'    <line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#000000" stroke-width="%.3f"/>',
 					staff.left,
 					line_y,
-					staff.left + ctx.staff.width + 2,
+					width or (staff.left + ctx.staff.width + 2),
 					line_y,
 					staff.line_thickness
 				)

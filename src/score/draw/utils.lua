@@ -72,16 +72,13 @@ local function glyph_width_px(ctx, glyph_name)
 	return (ne_x - sw_x) * spacing
 end
 
-local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y, fill_color, options)
-	utils.log("glyph_group", 2)
+local function glyph_metrics(ctx, glyph_name, anchor_y, align_x, align_y, options)
 	options = options or {}
-	align_x = align_x
-	align_y = align_y
 
 	local glyph = getGlyph(glyph_name)
 	local bbox = ctx.glyph.bboxes[glyph_name]
 	if not glyph or glyph.d == "" or not bbox or not bbox.bBoxSW or not bbox.bBoxNE then
-		return nil, nil
+		return nil
 	end
 
 	local units_per_space = ctx.glyph.units_per_space
@@ -128,58 +125,58 @@ local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y
 
 	local min_x_px = (sw_x_units + translate_x_units) * glyph_scale
 	local max_x_px = (ne_x_units + translate_x_units) * glyph_scale
-	local width_px = max_x_px - min_x_px
+	local abs_y_sw = anchor_y - (glyph_scale * (sw_y_units + translate_y_units))
+	local abs_y_ne = anchor_y - (glyph_scale * (ne_y_units + translate_y_units))
+	local metrics = {
+		min_x = min_x_px,
+		max_x = max_x_px,
+		width = max_x_px - min_x_px,
+		height = (ne_y_units - sw_y_units) * glyph_scale,
+		sw_y_units = sw_y_units,
+		ne_y_units = ne_y_units,
+		translate_x_units = translate_x_units,
+		translate_y_units = translate_y_units,
+		absolute_min_y = math.min(abs_y_sw, abs_y_ne),
+		absolute_max_y = math.max(abs_y_sw, abs_y_ne),
+	}
+	return metrics, glyph
+end
 
+local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y, fill_color, options)
+	utils.log("glyph_group", 2)
+	local metrics, glyph = glyph_metrics(ctx, glyph_name, anchor_y, align_x, align_y, options)
+	if ctx.measure_only or not metrics then
+		return nil, metrics
+	end
+
+	if not ctx.clip_to_viewport and ctx.width and ctx.height then
+		local min_x = anchor_x + metrics.min_x
+		local max_x = anchor_x + metrics.max_x
+		local min_y, max_y = metrics.absolute_min_y, metrics.absolute_max_y
+		if min_x < 0 or max_x > ctx.width or min_y < 0 or max_y > ctx.height then
+			record_canvas_violation(ctx, glyph_name, { min_x = min_x, max_x = max_x, min_y = min_y, max_y = max_y })
+		end
+	end
+
+	local scale = ctx.glyph.scale
 	local path = string.format(
 		'<g transform="translate(%.3f,%.3f) scale(%.6f,%.6f) translate(%.3f,%.3f)">\n    <path d="%s" fill="%s"/>\n  </g>',
 		anchor_x,
 		anchor_y,
-		glyph_scale,
-		-glyph_scale,
-		translate_x_units,
-		translate_y_units,
+		scale,
+		-scale,
+		metrics.translate_x_units,
+		metrics.translate_y_units,
 		glyph.d,
 		fill_color or "#000000"
 	)
-
-	local abs_min_x = anchor_x + min_x_px
-	local abs_max_x = anchor_x + max_x_px
-	local function absolute_y(y_units)
-		return anchor_y - (glyph_scale * (y_units + translate_y_units))
-	end
-	local abs_y_sw = absolute_y(sw_y_units)
-	local abs_y_ne = absolute_y(ne_y_units)
-	local abs_min_y = math.min(abs_y_sw, abs_y_ne)
-	local abs_max_y = math.max(abs_y_sw, abs_y_ne)
-	local bounds = {
-		min_x = abs_min_x,
-		max_x = abs_max_x,
-		min_y = abs_min_y,
-		max_y = abs_max_y,
-	}
-	if ctx and not ctx.clip_to_viewport and ctx.width and ctx.height then
-		if abs_min_x < 0 or abs_max_x > ctx.width or abs_min_y < 0 or abs_max_y > ctx.height then
-			record_canvas_violation(ctx, glyph_name, bounds)
-		end
-	end
-
-	return path,
-		{
-			min_x = min_x_px,
-			max_x = max_x_px,
-			width = width_px,
-			height = (ne_y_units - sw_y_units) * glyph_scale,
-			sw_y_units = sw_y_units,
-			ne_y_units = ne_y_units,
-			translate_y_units = translate_y_units,
-			absolute_min_y = abs_min_y,
-			absolute_max_y = abs_max_y,
-		}
+	return path, metrics
 end
 
 return {
 	getGlyph = getGlyph,
 	record_canvas_violation = record_canvas_violation,
 	glyph_width_px = glyph_width_px,
+	glyph_metrics = glyph_metrics,
 	glyph_group = glyph_group,
 }

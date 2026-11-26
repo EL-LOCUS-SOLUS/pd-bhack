@@ -80,7 +80,9 @@ end
 
 -- ─────────────────────────────────────
 function Score:set_ctx(ctx)
+	self.voice = nil
 	self.ctx = ctx
+	self.ctx.measure_meta = ctx.measure_meta or measure.build_measure_meta(ctx.measures or {})
 	self.ctx.render_measure_count = self.render_measure_count
 	refresh_chord_note_duration_ms(self.ctx)
 end
@@ -96,6 +98,7 @@ function Score:set_material(material)
 	self.render_stems = material.render_stems or self.render_tree
 	self.clef_name_or_key = material.clef
 	self.bpm = material.bpm
+	self.current_chord_index = nil
 
 	if not (self.render_tree or self.render_stems) then
 		material.tree = {}
@@ -122,6 +125,7 @@ function Score:set_material(material)
 		time_unity = 4,
 		render_tree = self.render_tree,
 		render_stems = self.render_stems,
+		paginate_chords = material.paginate_chords and not (self.render_tree or self.render_stems),
 		render_measure_count = self.render_measure_count,
 		tree = material.draw and material.tree or nil,
 	}
@@ -134,6 +138,7 @@ end
 
 -- Rebuild display geometry without replacing the sequence or its playback state.
 function Score:layout(draw)
+	self.chord_view = nil
 	local ctx = self.ctx
 	local config = geometry.resolve_clef_config(self.clef_name_or_key)
 	local clefs = config.glyph and { config } or config
@@ -220,6 +225,10 @@ function Score:layout(draw)
 		ctx.note.right_extent = ctx.note.left_extent
 	end
 
+	if ctx.paginate_chords then
+		return
+	end
+
 	local first_meta = ctx.measure_meta and ctx.measure_meta[1]
 	if first_meta and first_meta.show_time_signature then
 		local tm = render_time.compute_time_signature_metrics(
@@ -264,6 +273,9 @@ function Score:set_current_measure_position(position)
 	local start_entry_index = 1
 	if self.voice and self.voice.set_current_measure_position then
 		start_entry_index = self.voice:set_current_measure_position(pos) or start_entry_index
+	elseif self.ctx and self.ctx.measure_meta then
+		local meta = self.ctx.measure_meta[pos]
+		start_entry_index = meta and meta.start_index or #(self.ctx.chords or {}) + 1
 	end
 
 	if self.ctx then
@@ -280,6 +292,7 @@ end
 
 -- ─────────────────────────────────────
 function Score:set_bpm(bpm)
+	self.bpm = bpm
 	self.ctx.bpm = bpm
 	refresh_chord_note_duration_ms(self.ctx)
 end
@@ -291,8 +304,11 @@ function Score:get_onsets(playbar_position)
 		start_measure = 1
 	end
 
-	local bounds = self.ctx.chords_rest_positions
-	if not bounds or #bounds == 0 then
+	-- Chord pages are a view of the sequence. Playback uses every chord even
+	-- when the renderer has drawn only the current page.
+	local chords = self.ctx.paginate_chords and self.ctx.chords
+	local slots = chords or self.ctx.chords_rest_positions
+	if not slots or #slots == 0 then
 		return {}, 0, start_measure
 	end
 
@@ -347,11 +363,14 @@ function Score:get_onsets(playbar_position)
 	end
 
 	local indexed = {}
-	local total = math.min(#bounds, #entry_onsets)
+	local total = math.min(#slots, #entry_onsets)
 	local last_onset = 0
 	for i = 1, total do
 		local attack = entry_onsets[i]
-		local slot = bounds[i]
+		local slot = slots[i]
+		if chords then
+			slot = { index = i, chord = slot, is_rest = slot.is_rest }
+		end
 		local duration_ms = entry_durations[i]
 		local duration_whole = entry_duration_wholes[i]
 		slot.duration = duration_ms
@@ -423,46 +442,50 @@ function Score:export_voice_musicxml(path)
 end
 
 -- ─────────────────────────────────────
-function Score:getsvg()
-	assert(self.ctx, "Paint context is nil, this is a fatal error and should not happen.")
-	assert(type(self.ctx.width) == "number", "Invalid width for SVG")
-	assert(type(self.ctx.height) == "number", "Invalid height for SVG")
+local function draw_clefs(ctx)
+	local chunks = {}
+	local clef_width = 0
+	for _, staff in ipairs(ctx.staves or { ctx.staff }) do
+		local clef_svg, metrics = render_staff.draw_clef(ctx, staff)
+		if clef_svg then
+			chunks[#chunks + 1] = clef_svg
+			clef_width = math.max(clef_width, metrics.width)
+		end
+	end
+	ctx.clef.layout_width = clef_width > 0 and clef_width or nil
+	return chunks
+end
 
+local function draw_svg(ctx, clefs, page)
 	local svg_chunks = {}
 	table.insert(
 		svg_chunks,
 		string.format(
 			'<svg xmlns="http://www.w3.org/2000/svg" width="%.3f" height="%.3f" viewBox="0 0 %.3f %.3f" overflow="hidden">',
-			self.ctx.width,
-			self.ctx.height,
-			self.ctx.width,
-			self.ctx.height
+			ctx.width,
+			ctx.height,
+			page and page.width or ctx.width,
+			ctx.height
 		)
 	)
 
-	local staff_svg = render_staff.draw_staff(self.ctx)
+	local staff_svg = render_staff.draw_staff(ctx, page and page.width)
 	if staff_svg then
 		table.insert(svg_chunks, staff_svg)
 	end
 
-	local clef_width = 0
-	for _, staff in ipairs(self.ctx.staves or { self.ctx.staff }) do
-		local clef_svg, metrics = render_staff.draw_clef(self.ctx, staff)
-		if clef_svg then
-			table.insert(svg_chunks, clef_svg)
-			clef_width = math.max(clef_width, metrics.width)
-		end
+	for _, clef_svg in ipairs(clefs) do
+		table.insert(svg_chunks, clef_svg)
 	end
-	self.ctx.clef.layout_width = clef_width > 0 and clef_width or nil
 
 	local ts_svg, notes_svg, ledger_svg, barline_svg, tuplet_svg, tie_svg, measure_number_svg, chords_rest_positions =
-		rendering.draw_sequence(self.ctx, self.ctx.chords, self.ctx.spacing_sequence, self.ctx.measure_meta)
+		rendering.draw_sequence(ctx, ctx.chords, ctx.spacing_sequence, ctx.measure_meta, page)
 
-	self.ctx.chords_rest_positions = chords_rest_positions
+	ctx.chords_rest_positions = chords_rest_positions
 	if ts_svg then
 		table.insert(svg_chunks, ts_svg)
 	end
-	local metronome_svg = render_time.draw_metronome_mark(self.ctx)
+	local metronome_svg = render_time.draw_metronome_mark(ctx)
 	if metronome_svg then
 		table.insert(svg_chunks, metronome_svg)
 	end
@@ -487,6 +510,35 @@ function Score:getsvg()
 
 	table.insert(svg_chunks, "</svg>")
 	return table.concat(svg_chunks, "\n")
+end
+
+-- For a paged score, also return the selected chord's playbar position and
+-- whether the staff needs to be repainted.
+function Score:getsvg(chord_index)
+	local ctx = assert(self.ctx, "Paint context is nil, this is a fatal error and should not happen.")
+	assert(type(ctx.width) == "number", "Invalid width for SVG")
+	assert(type(ctx.height) == "number", "Invalid height for SVG")
+
+	if not ctx.paginate_chords then
+		return draw_svg(ctx, draw_clefs(ctx))
+	end
+
+	self.current_chord_index = chord_index or self.current_chord_index
+	local view = self.chord_view
+	if not view then
+		view = { clefs = draw_clefs(ctx), pages = {}, page_by_chord = {} }
+		self.chord_view = view
+	end
+	local index = ctx.chords[self.current_chord_index] and self.current_chord_index or 1
+	rendering.extend_chord_pages(ctx, view, index)
+	local page = view.pages[view.page_by_chord[index]]
+	local changed = not view.svg or view.page ~= page
+	if changed then
+		view.svg = draw_svg(ctx, view.clefs, page)
+		view.page = page
+	end
+	local bounds = page and ctx.chords_rest_positions[index - page.first + 1]
+	return view.svg, bounds and bounds.left * (ctx.width / page.width), changed
 end
 
 return M

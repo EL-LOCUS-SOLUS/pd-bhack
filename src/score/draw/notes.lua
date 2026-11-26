@@ -166,7 +166,7 @@ local function render_chord_dynamic(state)
 	for _, candidate in ipairs(candidates) do
 		local chunk, metrics =
 			render_utils.glyph_group(state.ctx, glyph_name, chord_x, candidate.y, "center", "center", "#000000")
-		if chunk and metrics then
+		if metrics then
 			local gm_min_y = metrics.absolute_min_y or (candidate.y + (metrics.min_y or 0))
 			local gm_max_y = metrics.absolute_max_y or (candidate.y + (metrics.max_y or 0))
 			local overlap = math.max(0, math.min(gm_max_y, chord_max_y) - math.max(gm_min_y, chord_min_y))
@@ -185,8 +185,10 @@ local function render_chord_dynamic(state)
 		end
 	end
 
-	if best_chunk then
-		table.insert(state.notes_svg, table.concat({ '  <g class="dynamics">', "    " .. best_chunk, "  </g>" }, "\n"))
+	if best_metrics then
+		if best_chunk then
+			table.insert(state.notes_svg, table.concat({ '  <g class="dynamics">', "    " .. best_chunk, "  </g>" }, "\n"))
+		end
 		state = update_bounds_with_glyph(state, chord_x, best_metrics)
 		state.previous_chord_dynamic_glyph = glyph_name
 	end
@@ -200,12 +202,18 @@ local function assign_cluster_offsets(notes, threshold_steps, offset_px)
 		return
 	end
 
-	for _, n in ipairs(notes) do
+	local order = {}
+	for i, n in ipairs(notes) do
 		n.cluster_offset_px = -offset_px
+		order[n] = i
 	end
 
 	table.sort(notes, function(a, b)
-		return (a.steps or 0) < (b.steps or 0)
+		local a_steps, b_steps = a.steps or 0, b.steps or 0
+		if a_steps == b_steps then
+			return order[a] < order[b]
+		end
+		return a_steps < b_steps
 	end)
 
 	local left_steps, right_steps = {}, {}
@@ -279,11 +287,7 @@ local function draw_rest(ctx, rest, anchor_x)
 	local rest_y = staff.center
 	local chunk, metrics =
 		render_utils.glyph_group(ctx, glyph_name, anchor_x + staff.spacing * 0.5, rest_y, "center", "center", "#000000")
-	if not chunk then
-		error("Failed to create rest svg")
-	end
-
-	assert(metrics, "metrics is nil")
+	assert(metrics, "Failed to measure rest glyph")
 
 	local left_edge = anchor_x + metrics.min_x
 	local right_edge = anchor_x + metrics.max_x
@@ -480,8 +484,7 @@ local function render_accidents(ctx, chord, current_x, layout_right, placements)
 			local note_y = placement and placement.y or geometry.staff_y_for_steps(ctx, note.steps)
 			local y_offset = glyph_vertical_offset(glyph_name, accidental_key)
 			local glyph_options = (y_offset ~= 0) and { y_offset_spaces = y_offset } or nil
-			local _, metrics =
-				render_utils.glyph_group(ctx, glyph_name, 0, 0, "right", "center", "#000000", glyph_options)
+			local metrics = render_utils.glyph_metrics(ctx, glyph_name, 0, "right", "center", glyph_options)
 			if metrics then
 				chord_accidentals[#chord_accidentals + 1] = {
 					name = glyph_name,
@@ -695,28 +698,29 @@ local function render_accidents(ctx, chord, current_x, layout_right, placements)
 		end
 	end
 
-	local fragments = {}
-	for _, col in ipairs(columns) do
-		for _, placed in ipairs(col.placed) do
-			local glyph = render_utils.glyph_group(
-				ctx,
-				placed.info.name,
-				col.anchor_x,
-				placed.info.note_y,
-				"right",
-				"center",
-				"#000000",
-				placed.info.options
-			)
-			if glyph then
-				fragments[#fragments + 1] = "    " .. glyph
+	local group
+	if not ctx.measure_only then
+		local fragments = {}
+		for _, col in ipairs(columns) do
+			for _, placed in ipairs(col.placed) do
+				local glyph = render_utils.glyph_group(
+					ctx,
+					placed.info.name,
+					col.anchor_x,
+					placed.info.note_y,
+					"right",
+					"center",
+					"#000000",
+					placed.info.options
+				)
+				if glyph then
+					fragments[#fragments + 1] = "    " .. glyph
+				end
 			end
 		end
-	end
-
-	local group = nil
-	if #fragments > 0 then
-		group = table.concat({ '  <g class="accidentals">', table.concat(fragments, "\n"), "  </g>" }, "\n")
+		if #fragments > 0 then
+			group = table.concat({ '  <g class="accidentals">', table.concat(fragments, "\n"), "  </g>" }, "\n")
+		end
 	end
 
 	return group,
@@ -752,17 +756,19 @@ local function render_noteheads(state)
 			"#000000",
 			notehead_options
 		)
-		if g then
-			table.insert(state.notes_svg, "  " .. g)
+		if m then
+			if g then
+				table.insert(state.notes_svg, "  " .. g)
+			end
 			note.render_x = center_x
 			note.render_y = note_y
-			note.left_extent = m and math.abs(m.min_x or 0) or state.ctx.note.left_extent
-			note.right_extent = m and (m.max_x or 0) or state.ctx.note.right_extent
+			note.left_extent = math.abs(m.min_x)
+			note.right_extent = m.max_x
 			state.note_head_metrics[note] = m
 			state = update_bounds_with_glyph(state, center_x, m)
 
 			if chord_dot_level > 0 then
-				local notehead_width = (m and m.width) or 0
+				local notehead_width = m.width
 				if notehead_width <= 0 then
 					notehead_width = (note.left_extent or 0) + (note.right_extent or 0)
 				end
@@ -774,7 +780,7 @@ local function render_noteheads(state)
 				end
 				local dot_x_offset = notehead_width + (state.staff_spacing * 0.7)
 				local dot_x_step = state.staff_spacing
-				local note_base_x = center_x + ((m and m.min_x) or (notehead_width * -0.5)) + state.staff_spacing / 2
+				local note_base_x = center_x + m.min_x + state.staff_spacing / 2
 				local dot_y = note_y
 				local dot_steps = placement.steps
 				if dot_steps then
@@ -837,7 +843,7 @@ local function render_articulations(state)
 			local y = blocking_edge + (above and -gap or gap)
 			local chunk, metrics =
 				render_utils.glyph_group(state.ctx, glyph_name, chord_x, y, "center", "center", "#000000")
-			if chunk and metrics then
+			if metrics then
 				if above and metrics.absolute_max_y and metrics.absolute_max_y > (blocking_edge - gap) then
 					y = y - (metrics.absolute_max_y - (blocking_edge - gap))
 					chunk, metrics = render_utils.glyph_group(state.ctx, glyph_name, chord_x, y, "center", "center", "#000000")
@@ -848,8 +854,8 @@ local function render_articulations(state)
 			end
 			if chunk then
 				table.insert(state.notes_svg, table.concat({ '  <g class="articulations">', "    " .. chunk, "  </g>" }, "\n"))
-				state = update_bounds_with_glyph(state, chord_x, metrics)
 			end
+			state = update_bounds_with_glyph(state, chord_x, metrics)
 		end
 	end
 	return state
@@ -902,22 +908,27 @@ local function render_ledgers(state)
 			local extra_each_side = (state.staff_spacing * 0.8) * 0.5
 			local left = center_x - (head_width_px * 0.5) - state.ledger_cfg.extension - extra_each_side
 			local right = center_x + (head_width_px * 0.5) + state.ledger_cfg.extension + extra_each_side
+			if (not state.chord_leftmost) or (left < state.chord_leftmost) then
+				state.chord_leftmost = left
+			end
 			if (not state.chord_rightmost) or (right > state.chord_rightmost) then
 				state.chord_rightmost = right
 			end
-			for _, st in ipairs(ledgers) do
-				local y = geometry.staff_y_for_steps(state.ctx, st, placement.staff)
-				table.insert(
-					state.ledger_svg,
-					string.format(
-						'  <line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#000000" stroke-width="%.3f"/>',
-						left,
-						y,
-						right,
-						y,
-						state.ledger_cfg.thickness
+			if not state.ctx.measure_only then
+				for _, st in ipairs(ledgers) do
+					local y = geometry.staff_y_for_steps(state.ctx, st, placement.staff)
+					table.insert(
+						state.ledger_svg,
+						string.format(
+							'  <line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#000000" stroke-width="%.3f"/>',
+							left,
+							y,
+							right,
+							y,
+							state.ledger_cfg.thickness
+						)
 					)
-				)
+				end
 			end
 		end
 	end
@@ -1186,16 +1197,11 @@ local function render_rests(state)
 	local rest_chunk, rest_metrics = draw_rest(state.ctx, chord, chord_x)
 	if rest_chunk then
 		table.insert(state.notes_svg, "  " .. rest_chunk)
-		if rest_metrics then
-			state.chord_leftmost = rest_metrics.left or chord_x
-			state.chord_rightmost = rest_metrics.right or chord_x
-			state.chord_min_y = rest_metrics.min_y
-			state.chord_max_y = rest_metrics.max_y
-		else
-			state.chord_leftmost = chord_x - (state.staff_spacing * 0.3)
-			state.chord_rightmost = chord_x + (state.staff_spacing * 0.3)
-		end
 	end
+	state.chord_leftmost = rest_metrics.left
+	state.chord_rightmost = rest_metrics.right
+	state.chord_min_y = rest_metrics.min_y
+	state.chord_max_y = rest_metrics.max_y
 	state = render_rest_dots(state, chord, rest_metrics)
 	local rest_left = state.chord_leftmost or chord_x
 	local rest_right = state.chord_rightmost or (rest_left + default_notehead_width)
