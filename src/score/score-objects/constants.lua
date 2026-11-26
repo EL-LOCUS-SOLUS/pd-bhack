@@ -117,7 +117,10 @@ local bass_8vb = {
 	anchor_pitch = { letter = "F", octave = 2 },
 	lines = bass.lines,
 }
+M.CLEF_CONFIGS.gg = { treble_8va, treble }
 M.CLEF_CONFIGS.gf = { treble, bass }
+M.CLEF_CONFIGS.ff = { bass, bass_8vb }
+M.CLEF_CONFIGS.ggf = { treble_8va, treble, bass }
 M.CLEF_CONFIGS.gff = { treble, bass, bass_8vb }
 M.CLEF_CONFIGS.ggff = { treble_8va, treble, bass, bass_8vb }
 
