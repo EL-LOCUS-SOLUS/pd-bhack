@@ -110,6 +110,36 @@ function SLAXML:parse(xml,options)
 		end
 	end
 
+	local function findDoctype()
+		if not find(xml, '^<!DOCTYPE%s', pos) then return end
+		local quote, subset = nil, false
+		local index = pos + 9
+		while index <= #xml do
+			local c = sub(xml, index, index)
+			if quote then
+				if c == quote then quote = nil end
+			elseif c == '"' or c == "'" then
+				quote = c
+			elseif subset and sub(xml, index, index + 3) == '<!--' then
+				local _, commentEnd = find(xml, '-->', index + 4, true)
+				if not commentEnd then break end
+				index = commentEnd
+			elseif c == '[' then
+				subset = true
+			elseif c == ']' then
+				subset = false
+			elseif c == '>' and not subset then
+				first = pos
+				finishText()
+				pos = index + 1
+				textStart = pos
+				return true
+			end
+			index = index + 1
+		end
+		error('Unclosed DOCTYPE declaration')
+	end
+
 	local function nsForPrefix(prefix)
 		if prefix=='xml' then return 'http://www.w3.org/XML/1998/namespace' end -- http://www.w3.org/TR/xml-names/#ns-decl
 		for i=#nsStack,1,-1 do if nsStack[i][prefix] then return nsStack[i][prefix] end end
@@ -235,7 +265,7 @@ function SLAXML:parse(xml,options)
 
 	while pos<#xml do
 		if state=="text" then
-			if not (findPI() or findComment() or findCDATA() or findElementClose()) then
+			if not (findPI() or findComment() or findDoctype() or findCDATA() or findElementClose()) then
 				if startElement() then
 					state = "attributes"
 				else
