@@ -1,7 +1,8 @@
 local constants = require("score/score-objects/constants")
 local utils = require("score/functions/utils")
+local importer = require("score/import-export/musicxml-import")
 
-local M = {}
+local M = { import_voice = importer.import_voice, parse_voice = importer.parse_voice }
 
 function M.resolve_musicxml_type(element)
 	utils.log("resolve_rest_glyph", 2)
@@ -65,7 +66,7 @@ end
 
 local function append_tuplet(xml_lines, entry)
 	local tuplet = entry.parent_tuplet
-	if not tuplet or tuplet.is_beam_group_only then
+	if not tuplet or tuplet.is_beam_group_only or not tuplet.label_string then
 		return
 	end
 	if tuplet.depth > 1 then
@@ -95,7 +96,113 @@ local function append_dots_and_tuplet(xml_lines, entry)
 	append_tuplet(xml_lines, entry)
 end
 
-function M.export_voice(measures, path)
+local function number_ranges(ranges, name, add_marks)
+	table.sort(ranges, function(a, b)
+		return a.start_index < b.start_index
+	end)
+	local number_in_use_until = {}
+	for _, range in ipairs(ranges) do
+		local number = 1
+		while (number_in_use_until[number] or 0) > range.start_index do
+			number = number + 1
+		end
+		if number > 16 then
+			error("MusicXML supports at most 16 overlapping " .. name)
+		end
+		number_in_use_until[number] = range.end_index
+		add_marks(range, number)
+	end
+end
+
+local function slur_notations(measures, slurs)
+	local notations = {}
+	if not slurs or #slurs == 0 then
+		return notations
+	end
+
+	local pitched = {}
+	for _, measure in ipairs(measures) do
+		for _, entry in ipairs(measure.entries or {}) do
+			pitched[#pitched + 1] = not entry.is_rest
+		end
+	end
+	local ranges = {}
+	for _, slur in ipairs(slurs) do
+		if pitched[slur.start_index] and pitched[slur.end_index] then
+			ranges[#ranges + 1] = slur
+		end
+	end
+	local function add(index, mark)
+		notations[index] = notations[index] or {}
+		notations[index][#notations[index] + 1] = mark
+	end
+	number_ranges(ranges, "slurs", function(slur, number)
+		local placement = slur.placement and (' placement="%s"'):format(slur.placement) or ""
+		add(slur.start_index, ('<slur type="start" number="%d"%s/>'):format(number, placement))
+		add(slur.end_index, ('<slur type="stop" number="%d"/>'):format(number))
+	end)
+	return notations
+end
+
+local HAIRPIN_DIVISIONS = 480
+
+local function decimal(number)
+	return (("%.12f"):format(number):gsub("0+$", ""):gsub("%.$", ""))
+end
+
+local function hairpin_directions(measures, hairpins)
+	local directions = {}
+	if not hairpins or #hairpins == 0 then
+		return directions
+	end
+	local entries = {}
+	for _, measure in ipairs(measures) do
+		for _, entry in ipairs(measure.entries or {}) do
+			entries[#entries + 1] = entry
+		end
+	end
+
+	local ranges = {}
+	for _, range in ipairs(hairpins) do
+		if range.end_index <= #entries + 1 then
+			ranges[#ranges + 1] = range
+		end
+	end
+
+	local marks = {}
+	local function add(position, kind, number, placement, spread)
+		local index = math.floor(position)
+		local offset = ""
+		if position > index then
+			local units = (position - index) * entries[index].duration_whole * (4 * HAIRPIN_DIVISIONS)
+			offset = "<offset>" .. decimal(units) .. "</offset>"
+		end
+		placement = placement and (' placement="%s"'):format(placement) or ""
+		spread = spread and (' spread="%s"'):format(decimal(spread)) or ""
+		local direction = ('<direction%s><direction-type><wedge type="%s" number="%d"%s/></direction-type>%s</direction>')
+			:format(placement, kind, number, spread, offset)
+		marks[#marks + 1] = { position = position, order = #marks + 1, xml = direction }
+	end
+	number_ranges(ranges, "hairpins", function(range, number)
+		local cresc = range.kind == "crescendo"
+		add(range.start_index, range.kind, number, range.placement, not cresc and range.spread or nil)
+		add(range.end_index, "stop", number, range.placement, cresc and range.spread or nil)
+	end)
+	table.sort(marks, function(a, b)
+		if a.position == b.position then
+			return a.order < b.order
+		end
+		return a.position < b.position
+	end)
+	for _, mark in ipairs(marks) do
+		local index = math.floor(mark.position)
+		directions[index] = directions[index] or {}
+		directions[index][#directions[index] + 1] = mark.xml
+	end
+	return directions
+end
+
+function M.export_voice(measures, path, slurs, hairpins)
 	local xml_lines = {
 		'<?xml version="1.0" encoding="UTF-8"?>',
 		"<!DOCTYPE score-partwise>",
@@ -106,6 +213,20 @@ function M.export_voice(measures, path)
 		'<part id="P1">',
 	}
 
+	local slurs_by_entry = slur_notations(measures, slurs)
+	local directions = hairpin_directions(measures, hairpins)
+	local write_durations = next(directions) ~= nil
+	local function append_directions(index)
+		for _, direction in ipairs(directions[index] or {}) do
+			table.insert(xml_lines, direction)
+		end
+	end
+	local function append_duration(entry)
+		if write_durations then
+			table.insert(xml_lines, "<duration>" .. decimal(entry.duration_whole * (4 * HAIRPIN_DIVISIONS)) .. "</duration>")
+		end
+	end
+	local entry_index = 0
 	local previous_timesig = measures[1] and measures[1].time_sig
 	for i, measure in ipairs(measures) do
 		local time_sig = measure.time_sig
@@ -113,6 +234,9 @@ function M.export_voice(measures, path)
 		if i == 1 or time_sig[1] ~= previous_timesig[1] or time_sig[2] ~= previous_timesig[2] then
 			table.insert(xml_lines, "<attributes>")
 			if i == 1 then
+				if write_durations then
+					table.insert(xml_lines, ("<divisions>%d</divisions>"):format(HAIRPIN_DIVISIONS))
+				end
 				table.insert(xml_lines, "<key><fifths>0</fifths></key>")
 			end
 			table.insert(
@@ -127,9 +251,14 @@ function M.export_voice(measures, path)
 		previous_timesig = time_sig
 
 		for _, entry in ipairs(measure.entries or {}) do
+			entry_index = entry_index + 1
+			if write_durations then
+				append_directions(entry_index)
+			end
 			if entry.is_rest then
 				table.insert(xml_lines, "<note>")
 				table.insert(xml_lines, "<rest/>")
+				append_duration(entry)
 				append_type(xml_lines, entry)
 				append_dots_and_tuplet(xml_lines, entry)
 				table.insert(xml_lines, "</note>")
@@ -149,6 +278,7 @@ function M.export_voice(measures, path)
 							note.octave
 						)
 					)
+					append_duration(entry)
 					append_type(xml_lines, entry)
 					if smufl then
 						local accidental = M.accidental_smufl_name(note.accidental)
@@ -161,9 +291,16 @@ function M.export_voice(measures, path)
 						)
 					end
 					append_dots_and_tuplet(xml_lines, entry)
+					local slur_marks = slurs_by_entry[entry_index]
+					if note_index == 1 and slur_marks then
+						table.insert(xml_lines, "<notations>" .. table.concat(slur_marks) .. "</notations>")
+					end
 					table.insert(xml_lines, "</note>")
 				end
 			end
+		end
+		if i == #measures and write_durations then
+			append_directions(entry_index + 1)
 		end
 		table.insert(xml_lines, "</measure>")
 	end
