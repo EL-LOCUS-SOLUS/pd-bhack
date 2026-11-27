@@ -22,6 +22,7 @@ _G.pd = {
 		end,
 	},
 	_set_propertiesfn = function() end,
+	_outlet = function() end,
 	post = function() end,
 	error = error,
 }

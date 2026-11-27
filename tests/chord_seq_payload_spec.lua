@@ -15,6 +15,7 @@ _G.pd = {
 }
 
 local created_scores = 0
+local emitted
 package.loaded.bhack = {
 	utils = {
 		n2m = function(pitch)
@@ -48,6 +49,15 @@ package.loaded.bhack = {
 				depth = 1,
 				get_table = function()
 					return atoms
+				end,
+			}
+		end,
+		new_from_table = function(_, _, payload)
+			return {
+				set_type = function() end,
+				output = function(_, outlet)
+					assert(outlet == 3)
+					emitted = payload
 				end,
 			}
 		end,
@@ -92,11 +102,13 @@ assert(instance.Score == original_score, "an invalid pitch must preserve the dis
 assert(instance.CHORDS == original_chords, "an invalid pitch must preserve the chord material")
 assert(created_scores == 0, "invalid input must be rejected before building a replacement score")
 assert(last_error and last_error:find("keeping the current score", 1, true), "invalid pitches must be ignored safely")
+assert(not emitted, "invalid chord material must not be sent downstream")
 
 instance:in_1_list({ "D4" })
 assert(instance.Score ~= original_score, "a valid update must replace the score")
 assert(instance.svg == "<svg/>", "the replacement score must render before it is committed")
 assert(created_scores == 1, "a valid update must build one replacement score")
 assert(repaint_count == 1, "a valid update must repaint the object")
+assert(emitted.type == "chord-seq" and emitted.chords[1].notes[1].pitch == "D4")
 
 print("chord_seq_payload_spec.lua: all tests passed")
