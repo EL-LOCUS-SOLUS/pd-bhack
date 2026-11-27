@@ -53,9 +53,18 @@ local function hairpin_paths(svg)
 	return paths
 end
 
-local function slur_y(path, control, x)
-	local fraction = (x - path[1]) / (path[7] - path[1])
-	return path[2] + (path[8] - path[2]) * fraction + 3 * fraction * (1 - fraction) * (path[control] - path[2])
+local function slur_y(path, x, inner)
+	local t = (x - path[1]) / (path[7] - path[1])
+	local u = 1 - t
+	local left, right = path[4], path[6]
+	if inner then
+		left, right = path[12], path[10]
+	end
+	return u ^ 3 * path[2] + 3 * u ^ 2 * t * left + 3 * u * t ^ 2 * right + t ^ 3 * path[8]
+end
+
+local function slur_rise(path)
+	return slur_y(path, (path[1] + path[7]) * 0.5) - (path[2] + path[8]) * 0.5
 end
 
 local function dynamic_bounds(score, svg, names)
@@ -91,7 +100,7 @@ local dense = make_score(
 local svg = dense:getsvg()
 local marks = dynamic_bounds(dense, svg, names)
 local paths = slur_paths(svg)
-assert(#paths == 2 and paths[1][4] < paths[1][2] and paths[2][4] > paths[2][2])
+assert(#paths == 2 and slur_rise(paths[1]) < 0 and slur_rise(paths[2]) > 0)
 assert(marks[1].right > marks[2].left, "exercise horizontally overlapping dynamics")
 for i, mark in ipairs(marks) do
 	local chord = dense.ctx.chords_rest_positions[i]
@@ -109,9 +118,8 @@ for i, mark in ipairs(marks) do
 			local t = step / 40
 			local x = path[1] + (path[7] - path[1]) * t
 			if x > mark.left and x < mark.right then
-				local line_y = path[2] + (path[8] - path[2]) * t
-				local outer = line_y + 3 * t * (1 - t) * (path[4] - path[2])
-				local inner = line_y + 3 * t * (1 - t) * (path[12] - path[2])
+				local outer = slur_y(path, x)
+				local inner = slur_y(path, x, true)
 				assert(
 					mark.top > math.max(inner, outer) or mark.bottom < math.min(inner, outer),
 					"dynamics must clear the slur curve"
@@ -137,7 +145,33 @@ local note_bounds = descending.ctx.chords_rest_positions
 local spacing = descending.ctx.staff.spacing
 assert(arc[2] - note_bounds[1].notehead_max_y < spacing, "keep the first tip near its notehead")
 assert(arc[8] - note_bounds[6].notehead_max_y < spacing, "keep the last tip near its notehead")
-assert(arc[4] - arc[2] <= spacing * 1.8 + 0.001, "avoid an exaggerated arc on a descending phrase")
+assert(slur_rise(arc) <= spacing * 1.35 + 0.001, "avoid an exaggerated arc on a descending phrase")
+
+local clustered = make_score(
+	200,
+	76,
+	{ { { 2, 4 }, { 1, 1 } } },
+	{ { "C5", "D5" }, { "C5", "D5" } },
+	{ { 1, 2, "above" } }
+)
+local chord_arc = slur_paths(clustered:getsvg())[1]
+local first_chord = clustered.ctx.chords_rest_positions[1]
+assert(math.abs(chord_arc[1] - first_chord.chord.notes[2].render_x) < 0.001, "anchor to the outer notehead")
+assert(math.abs(chord_arc[2] - clustered.ctx.staff.top) > clustered.ctx.staff.spacing * 0.18, "clear the staff line")
+
+local joined = make_score(
+	200,
+	76,
+	{ { { 4, 4 }, { 1, 1, 1, 1 } } },
+	{ { "C4" }, { "D4" }, { "F4" }, { "G4" } },
+	{ { 1, 2, "above" }, { 2, 4, "above" }, { 1, 4, "above" } }
+)
+local adjacent = slur_paths(joined:getsvg())
+assert(adjacent[1][7] < adjacent[2][1], "leave a gap where two slurs share a chord")
+for i = 1, 2 do
+	local x = (adjacent[i][1] + adjacent[i][7]) * 0.5
+	assert(slur_y(adjacent[3], x, true) < slur_y(adjacent[i], x), "give nested slurs separate arcs")
+end
 
 local wedge_score = make_score(240, 100, { { { 4, 4 }, { 1, 1, 1, 1 } } }, {
 	{ notes = { "C4" }, dynamic = "p" },
@@ -152,7 +186,7 @@ local wedge = hairpin_paths(wedge_svg)[1]
 local slur = slur_paths(wedge_svg)[1]
 assert(wedge.kind == "crescendo" and wedge.opening_start == 0 and wedge.opening_end > 0)
 assert(wedge.left > dynamics[1].right and wedge.right < dynamics[2].left, "clear endpoint dynamics")
-assert(slur_y(slur, 12, wedge.right) > wedge.bottom, "the lower hairpin sits inside the slur")
+assert(slur_y(slur, wedge.right, true) > wedge.bottom, "the lower hairpin sits inside the slur")
 assert(wedge.bottom < wedge_score.ctx.height)
 
 local beamed = make_score(
@@ -166,11 +200,13 @@ assert(beamed:set_hairpins({ { "cres", 1, 2.5, "above" }, { "dim", 2.5, 4, "abov
 local beamed_svg = beamed:getsvg()
 local above_slur = slur_paths(beamed_svg)[1]
 local pair = hairpin_paths(beamed_svg)
-assert(#pair == 2 and above_slur[4] < above_slur[2], "the slur follows the side of the hairpin pair")
+assert(#pair == 2 and slur_rise(above_slur) < 0, "the slur follows the side of the hairpin pair")
 assert(above_slur[1] < pair[1].left and above_slur[7] > pair[2].right)
+local stem = beamed.ctx.chords_rest_positions[1].chord.notes[1].stem_metrics
+assert(math.abs(above_slur[1] - stem.anchor_x) < 0.001 and above_slur[2] < stem.flag_anchor_y, "anchor beyond the stem")
 for _, pin in ipairs(pair) do
 	local open_x = pin.kind == "crescendo" and pin.right or pin.left
-	assert(slur_y(above_slur, 12, open_x) < pin.top, "keep the hairpins between the beam and the slur")
+	assert(slur_y(above_slur, open_x, true) < pin.top, "keep the hairpins between the beam and the slur")
 end
 assert(beamed:set_slurs({ { 1, 4, "above" } }))
 assert(beamed:set_hairpins({ { "cres", 1, 2.5 }, { "dim", 2.5, 4 } }))
@@ -213,6 +249,25 @@ for measure = 1, 5 do
 		previous_opening = page_hairpins[1].opening_end
 	end
 end
+
+local mixed = make_score(275, 105, {
+	{ { 2, 4 }, { 1, 1 } },
+	{ { 3, 4 }, { -1, -1, -1 } },
+	{ { 2, 4 }, { 1, 1 } },
+	{ { 2, 4 }, { 1, 1 } },
+}, { { "C4" }, { "D4" }, { "E5" }, { "F4" }, { "D4" }, { "C4" } }, { { 1, 9 } }, 1)
+for measure = 1, 4 do
+	mixed:set_current_measure_position(measure)
+	local path = slur_paths(mixed:getsvg())[1]
+	assert(path and slur_rise(path) < 0, "mixed stems keep the slur above on each page")
+	if measure == 2 then
+		local header_right = mixed.ctx.measure_meta[measure].time_signature_right
+		assert(header_right and path[1] > header_right, "resume beyond the time signature on a page of rests")
+	end
+end
+mixed:set_render_measure_count(nil)
+mixed:set_current_measure_position(1)
+assert(slur_rise(slur_paths(mixed:getsvg())[1]) < 0, "an interior down stem puts a full slur above")
 
 local material = musicxml.parse_voice([[<score-partwise><part id="P1">
   <measure number="1">
