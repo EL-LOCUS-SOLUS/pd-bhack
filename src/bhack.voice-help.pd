@@ -26,6 +26,10 @@
 #X obj 5 96 x.gui.step 3;
 #X text 25 92 Try to change the first (1 4) to another number to change the measure;
 #X msg 7 129 list ((2 4) ((1 (4 1 1 1 1 1))));
+#X msg 123 288 slurs (1 4);
+#X msg 208 288 slurs;
+#X msg 271 340 hairpins (cres 1 3) (dim 3 4);
+#X msg 271 362 hairpins;
 #X connect 1 0 4 0;
 #X connect 3 0 4 0;
 #X connect 4 0 0 0;
@@ -46,3 +50,7 @@
 #X connect 17 0 3 0;
 #X connect 17 1 16 0;
 #X connect 25 0 17 0;
+#X connect 26 0 4 0;
+#X connect 27 0 4 0;
+#X connect 28 0 4 0;
+#X connect 29 0 4 0;

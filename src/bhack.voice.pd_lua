@@ -2,6 +2,7 @@ local b_voice = pd.Class:new():register("bhack.voice")
 local bhack = require("bhack")
 local n2m = require("bhack").utils.n2m
 local pd_layout = require("score/compatibility/pd_layout")
+local hairpin_types = require("score/score-objects/constants").HAIRPIN_TYPES
 local RENDER_MEASURE_COUNT = 4
 local RENDER_MEASURE_STEP = 2
 
@@ -31,6 +32,8 @@ function b_voice:initialize(_, args)
 	--self.CHORDS = { { notes = { "C4" }, noteheads = { "ord" } } }
 	self.rhythm_tree_spec = { { { 4, 4 }, { 1, 1, 1, 1 } } } -- default input
 	self.current_clef_key = "g"
+	self.slurs = {}
+	self.hairpins = {}
 
 	-- Geometry
 	local first_option = pd_layout.initialize(self, bhack.score, args, 250, 80)
@@ -76,23 +79,41 @@ function b_voice:initialize(_, args)
 end
 
 -- ─────────────────────────────────────
+local function matching_tie(chord, note, tie_field)
+	for _, other in ipairs(chord and chord.notes or {}) do
+		if other[tie_field] and note.raw == other.raw and note.midi == other.midi then
+			return true
+		end
+	end
+	return false
+end
+
+local function note_attacks(note, previous_chord)
+	return not previous_chord
+		or (not previous_chord.is_tied and not (note.tie_stop and matching_tie(previous_chord, note, "tie_start")))
+end
+
 function b_voice:midiout()
 	local entry, previous = self.entry, self.previous_entry
 	if self.midiplayback then
 		if previous and not previous.chord.is_tied and not previous.chord.is_rest then
 			for _, note in ipairs(previous.chord.notes) do
-				self:outlet(1, "list", { note.midi, 0 })
-				if not self.entry or self.entry.chord ~= entry.chord then
-					return
+				if not (note.tie_start and matching_tie(entry and entry.chord, note, "tie_stop")) then
+					self:outlet(1, "list", { note.midi, 0 })
+					if self.entry ~= entry then
+						return
+					end
 				end
 			end
 		end
 
-		if entry and not entry.chord.is_rest and not (previous and previous.chord.is_tied) then
+		if entry and not entry.chord.is_rest then
 			for _, note in ipairs(entry.chord.notes) do
-				self:outlet(1, "list", { note.midi, 60 })
-				if not self.entry or self.entry.chord ~= entry.chord then
-					return
+				if note_attacks(note, previous and previous.chord) then
+					self:outlet(1, "list", { note.midi, 60 })
+					if self.entry ~= entry then
+						return
+					end
 				end
 			end
 		end
@@ -252,8 +273,11 @@ local function build_playback_timeline(ctx)
 				tick = math.floor(cursor),
 			}
 			timeline.entries[entry.index] = entry
-			if not chord.is_rest and not (previous_chord and previous_chord.is_tied) then
-				timeline.playable[#timeline.playable + 1] = entry
+			for _, note in ipairs(chord.notes or {}) do
+				if note_attacks(note, previous_chord) then
+					timeline.playable[#timeline.playable + 1] = entry
+					break
+				end
 			end
 			local duration = tonumber(timed_entry.duration_whole) or tonumber(timed_entry.duration) or 0
 			cursor = cursor + duration * ms_per_whole
@@ -533,6 +557,8 @@ local function apply_voice_payload(self, dddd)
 			render_tree = true,
 			tree = self.rhythm_tree_spec,
 			chords = self.CHORDS,
+			slurs = self.slurs,
+			hairpins = self.hairpins,
 			bpm = self.bpm,
 			draw = true,
 		})
@@ -575,6 +601,43 @@ end
 -- ─────────────────────────────────────
 function b_voice:in_1_list(atoms)
 	apply_voice_payload(self, bhack.dddd:new(self, atoms))
+end
+
+local function update_ranges(self, field, ranges)
+	local updated, err = self.Score["set_" .. field](self.Score, ranges)
+	if not updated then
+		self:error(err)
+		return
+	end
+	self[field] = updated
+	self:refresh_score_view()
+end
+
+local function append_range(self, field, range)
+	local ranges = {}
+	for i, existing in ipairs(self.Score.ctx[field] or {}) do
+		ranges[i] = existing
+	end
+	ranges[#ranges + 1] = range
+	update_ranges(self, field, ranges)
+end
+
+function b_voice:in_1_slur(atoms)
+	append_range(self, "slurs", atoms)
+end
+
+function b_voice:in_1_slurs(atoms)
+	update_ranges(self, "slurs", bhack.dddd:new(self, atoms):get_table())
+end
+
+for selector, kind in pairs(hairpin_types) do
+	b_voice["in_1_" .. selector] = function(self, atoms)
+		append_range(self, "hairpins", { kind = kind, start_index = atoms[1], end_index = atoms[2], placement = atoms[3] })
+	end
+end
+
+function b_voice:in_1_hairpins(atoms)
+	update_ranges(self, "hairpins", bhack.dddd:new(self, atoms):get_table())
 end
 
 -- ─────────────────────────────────────
