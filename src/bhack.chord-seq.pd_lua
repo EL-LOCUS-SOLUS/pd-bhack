@@ -1,5 +1,6 @@
 local b_chords = pd.Class:new():register("bhack.chord-seq")
 local bhack = require("bhack")
+local chord_data = require("score/functions/chords")
 local pd_layout = require("score/compatibility/pd_layout")
 
 pd_layout.install(b_chords)
@@ -12,10 +13,10 @@ local n2m = require("bhack").utils.n2m
 --╰─────────────────────────────────────╯
 function b_chords:initialize(_, args)
 	self.inlets = 2
-	self.outlets = 2
+	self.outlets = 3
 
 	-- Material
-	self.CHORDS = { { name = "C4", notes = { "C4" } } }
+	self.CHORDS = assert(chord_data.sequence({ "C4" })).chords
 	self.rhythm_tree_spec = { { { 4, 4 }, { 1, 1, 1, 1 } } } -- default input
 	self.current_clef_key = "g"
 
@@ -135,122 +136,9 @@ function b_chords:playing_clock()
 	self.playclock:delay(1)
 end
 
---╭─────────────────────────────────────╮
---│               Helpers               │
---╰─────────────────────────────────────╯
-local function is_rhythm_tree(tbl)
-	if type(tbl) ~= "table" or #tbl == 0 then
-		return false
-	end
-	local first = tbl[1]
-	if type(first) ~= "table" or #first == 0 then
-		return false
-	end
-	-- First can be { {4,4}, {...figs...} } or { {...figs...} }
-	local maybe_ts = first[1]
-	if
-		type(maybe_ts) == "table"
-		and #maybe_ts == 2
-		and type(maybe_ts[1]) == "number"
-		and type(maybe_ts[2]) == "number"
-	then
-		return true
-	end
-	for i = 1, #first do
-		if type(first[i]) ~= "number" then
-			return false
-		end
-	end
-
-	return true
-end
-
--- ─────────────────────────────────────
-local function chord_entry_to_named(entry)
-	if type(entry) ~= "table" then
-		return { name = tostring(entry), notes = { tostring(entry) } }
-	end
-	if entry.name and entry.notes then
-		-- Already normalized
-		return { name = tostring(entry.name), notes = entry.notes }
-	end
-	if #entry >= 2 and type(entry[1]) == "string" and type(entry[2]) == "table" then
-		return { name = entry[1], notes = entry[2] }
-	end
-	local all_str = true
-	for _, n in ipairs(entry) do
-		if type(n) ~= "string" then
-			all_str = false
-			break
-		end
-	end
-	if all_str and #entry > 0 then
-		return { name = table.concat(entry, "-"), notes = entry }
-	end
-	-- Fallback
-	return { name = "?", notes = {} }
-end
-
--- ─────────────────────────────────────
-local function normalize_chords_list(raw)
-	local chords = {}
-	if type(raw) ~= "table" then
-		return chords
-	end
-
-	local flat_all_strings = true
-	for _, v in ipairs(raw) do
-		if type(v) ~= "string" then
-			flat_all_strings = false
-			break
-		end
-	end
-
-	if flat_all_strings then
-		return { { name = table.concat(raw, "-"), notes = raw } }
-	end
-
-	for _, entry in ipairs(raw) do
-		table.insert(chords, chord_entry_to_named(entry))
-	end
-	return chords
-end
-
--- ─────────────────────────────────────
-local function validate_chords_list(chords)
-	if type(chords) ~= "table" or #chords == 0 then
-		return nil, "chord list is empty"
-	end
-
-	for chord_index, chord in ipairs(chords) do
-		if type(chord) ~= "table" or type(chord.notes) ~= "table" or #chord.notes == 0 then
-			return nil, string.format("chord %d has no notes", chord_index)
-		end
-		for note_index, pitch in ipairs(chord.notes) do
-			local ok, midi = pcall(n2m, pitch)
-			if not ok or type(midi) ~= "number" or midi ~= midi or midi == math.huge or midi == -math.huge then
-				return nil, string.format("chord %d note %d is not a valid pitch", chord_index, note_index)
-			end
-		end
-	end
-
-	return true
-end
-
 -- ─────────────────────────────────────
 local function build_candidate_score(self, chords)
-	local score = bhack.score.Score:new(self.width, self.height)
-	local previous = self.Score
-	if previous then
-		score.staff_size = previous.staff_size
-		score.staff_gap = previous.staff_gap
-		if previous.default_clef_layout and score.default_clef_layout then
-			for key, value in pairs(previous.default_clef_layout) do
-				score.default_clef_layout[key] = value
-			end
-		end
-	end
-
+	local score = pd_layout.new_score_like(self, bhack.score)
 	score:set_material({
 		clef = self.current_clef_key,
 		render_tree = false,
@@ -264,37 +152,20 @@ local function build_candidate_score(self, chords)
 end
 
 -- ─────────────────────────────────────
-local function apply_chords_payload(self, dddd)
-	local raw = dddd and dddd:get_table()
-	if type(raw) ~= "table" then
-		self:error("[bhack.chord-seq] ignored invalid input; keeping the current score")
+local function apply_chords_payload(self, value)
+	local sequence, err = chord_data.sequence(value)
+	if not sequence then
+		self:error("[bhack.chord-seq] ignored " .. err .. "; keeping the current score")
 		return false
 	end
 
-	local candidate_chords
-	if dddd.depth == 1 then
-		candidate_chords = {}
-		for i, note in ipairs(raw) do
-			candidate_chords[i] = { note }
-		end
-	else
-		candidate_chords = raw
-	end
-
-	local normalized = normalize_chords_list(candidate_chords)
-	local valid, validation_error = validate_chords_list(normalized)
-	if not valid then
-		self:error("[bhack.chord-seq] ignored " .. validation_error .. "; keeping the current score")
-		return false
-	end
-
-	local ok, candidate_score, candidate_svg = pcall(build_candidate_score, self, normalized)
+	local ok, candidate_score, candidate_svg = pcall(build_candidate_score, self, sequence.chords)
 	if not ok then
 		self:error("[bhack.chord-seq] ignored invalid input; keeping the current score: " .. tostring(candidate_score))
 		return false
 	end
 
-	self.CHORDS = candidate_chords
+	self.CHORDS = sequence.chords
 	self.Score = candidate_score
 	self.svg = candidate_svg
 	self.last_valid_position = nil
@@ -302,6 +173,7 @@ local function apply_chords_payload(self, dddd)
 		self.onsets, self.last_onset = self.Score:get_onsets()
 	end
 	self:repaint()
+	self:in_1_bang()
 	return true
 end
 
@@ -375,12 +247,18 @@ function b_chords:in_1_dddd(atoms)
 		error("dddd not found")
 	end
 
-	apply_chords_payload(self, dddd)
+	apply_chords_payload(self, dddd:get_table())
 end
 
 -- ─────────────────────────────────────
 function b_chords:in_1_list(atoms)
-	apply_chords_payload(self, bhack.dddd:new(self, atoms))
+	apply_chords_payload(self, bhack.dddd:new(self, atoms):get_table())
+end
+
+function b_chords:in_1_bang()
+	local data = bhack.dddd:new_from_table(self, { type = "chord-seq", chords = self.CHORDS })
+	data:set_type("chord-seq")
+	data:output(3)
 end
 
 -- ─────────────────────────────────────

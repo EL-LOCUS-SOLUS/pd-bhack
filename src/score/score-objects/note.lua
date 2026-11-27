@@ -358,6 +358,7 @@ function Chord:populate_notes(notes_or_spec)
 	local articulations = nil
 	local incoming_dynamic = nil
 	if type(notes_or_spec) == "table" and type(notes_or_spec.notes) == "table" then
+		self.name = notes_or_spec.name or self.name
 		notes = notes_or_spec.notes
 		noteheads = notes_or_spec.noteheads
 		articulations = notes_or_spec.articulations
@@ -396,7 +397,7 @@ function Chord:populate_notes(notes_or_spec)
 	if type(notes) ~= "table" then
 		return self
 	end
-	local last_name_or_glyph = nil
+	local last_list_notehead = nil
 	local note_articulations = {}
 	for k, entry in ipairs(notes) do
 		local note_spec = internal_utils.clone_note_entry(entry)
@@ -405,11 +406,10 @@ function Chord:populate_notes(notes_or_spec)
 		-- Priority:
 		-- - per-note noteheads[k] from spec
 		-- - note_spec.notehead (from blueprints / external callers)
-		-- - last provided value (so users can send shorter notehead lists)
-		local name_or_glyph = (noteheads and noteheads[k]) or note_spec.notehead or last_name_or_glyph
-		if name_or_glyph ~= nil then
-			last_name_or_glyph = name_or_glyph
-		end
+		-- - last noteheads list value (so users can send shorter lists)
+		local list_notehead = noteheads and noteheads[k]
+		last_list_notehead = list_notehead or last_list_notehead
+		local name_or_glyph = list_notehead or note_spec.notehead or last_list_notehead
 		local resolved = resolve_notehead_glyph(name_or_glyph, figure_suffix) or default_glyph
 		local pitch = note_spec.pitch or note_spec.raw or note_spec.note or note_spec[1] or entry
 		local note_obj = Note:new(pitch, {

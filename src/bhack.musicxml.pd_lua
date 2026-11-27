@@ -1,5 +1,6 @@
 local musicxml = require("score/import-export/musicxml")
 local dddd = require("dddd")
+local output_parts = require("score/compatibility/pd_voice_output")
 local importer = pd.Class:new():register("bhack.musicxml")
 
 -- ─────────────────────────────────────
@@ -7,7 +8,17 @@ function importer:initialize(_, args)
 	self.inlets = 1
 	self.outlets = 1
 	self.path = args and args[1]
+	self.material = nil
 	return true
+end
+
+-- ─────────────────────────────────────
+function importer:in_1_getdata()
+	if not self.material then
+		self:error("[bhack.musicxml] read a MusicXML file before requesting its data")
+		return
+	end
+	output_parts(self, self.material)
 end
 
 -- ─────────────────────────────────────
@@ -32,7 +43,7 @@ function importer:in_1_read(atoms)
 		return
 	end
 
-	self.path = path
+	self.path, self.material = path, material
 	local voice = dddd:new_from_table(self, material)
 	voice:set_type("voice")
 	voice:output(1)

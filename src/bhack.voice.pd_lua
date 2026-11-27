@@ -1,7 +1,9 @@
 local b_voice = pd.Class:new():register("bhack.voice")
 local bhack = require("bhack")
 local n2m = require("bhack").utils.n2m
+local chord_data = require("score/functions/chords")
 local pd_layout = require("score/compatibility/pd_layout")
+local output_parts = require("score/compatibility/pd_voice_output")
 local hairpin_types = require("score/score-objects/constants").HAIRPIN_TYPES
 local RENDER_MEASURE_COUNT = 4
 local RENDER_MEASURE_STEP = 2
@@ -32,8 +34,6 @@ function b_voice:initialize(_, args)
 	--self.CHORDS = { { notes = { "C4" }, noteheads = { "ord" } } }
 	self.rhythm_tree_spec = { { { 4, 4 }, { 1, 1, 1, 1 } } } -- default input
 	self.current_clef_key = "g"
-	self.slurs = {}
-	self.hairpins = {}
 
 	-- Geometry
 	local first_option = pd_layout.initialize(self, bhack.score, args, 250, 80)
@@ -457,8 +457,8 @@ end
 --╭─────────────────────────────────────╮
 --│           Object Methods            │
 --╰─────────────────────────────────────╯
-function b_voice:refresh_score_view()
-	self.svg = self.Score:getsvg()
+function b_voice:refresh_score_view(svg)
+	self.svg = svg or self.Score:getsvg()
 	self.rendered_chords = {}
 	for _, bounds in ipairs(self.Score.ctx.chords_rest_positions or {}) do
 		self.rendered_chords[bounds.chord] = bounds
@@ -474,13 +474,13 @@ local function reset_playback_position(self)
 	self.playbar_entry_index = nil
 end
 
-function b_voice:load_playback_score()
+function b_voice:load_playback_score(svg)
 	local sounding = self.is_playing and self.entry
 	self.timeline = build_playback_timeline(self.Score.ctx)
 	reset_playback_position(self)
 	self.current_measure = 1
 	self.Score:set_current_measure_position(1)
-	self:refresh_score_view()
+	self:refresh_score_view(svg)
 	if self.is_playing then
 		self.playclock:delay(1)
 		release_entry(self, sounding)
@@ -529,10 +529,56 @@ function b_voice:in_1_bpm(args)
 end
 
 -- ─────────────────────────────────────
+local function rhythm_material(self, tree, chords)
+	local ctx = self.Score.ctx
+	return {
+		clef = self.Score.clef_name_or_key or self.current_clef_key,
+		render_tree = true,
+		tree = tree,
+		chords = chords,
+		slurs = ctx.slurs,
+		hairpins = ctx.hairpins,
+		bpm = ctx.bpm or self.bpm,
+		draw = true,
+	}
+end
+
+local function apply_chord_sequence(self, value)
+	local sequence, err
+	if type(value.chords) == "table" and next(value.chords) == nil then
+		sequence = value
+	else
+		sequence, err = chord_data.sequence(value)
+	end
+	if not sequence then
+		self:error("[bhack.voice] " .. err)
+		return
+	end
+	local tree = self.Score.ctx.tree or self.rhythm_tree_spec
+	local material = rhythm_material(self, tree, sequence.chords)
+	local score = pd_layout.new_score_like(self, bhack.score)
+	local ok, svg = pcall(function()
+		score:set_material(material)
+		score:set_current_measure_position(1)
+		return score:getsvg()
+	end)
+	if not ok then
+		self:error("[bhack.voice] " .. tostring(svg))
+		return
+	end
+	self.Score = score
+	self.rhythm_tree_spec, self.CHORDS = tree, sequence.chords
+	self:load_playback_score(svg)
+end
+
 local function apply_voice_payload(self, dddd)
 	local t = dddd and dddd:get_table()
 	if type(t) ~= "table" then
 		self:error("voice payload is not a table")
+		return
+	end
+	if t.type == "chord-seq" then
+		apply_chord_sequence(self, t)
 		return
 	end
 	t = normalize_rhythm_tree_payload(t)
@@ -550,19 +596,17 @@ local function apply_voice_payload(self, dddd)
 	end
 
 	-- If it's a rhythm-tree (e.g. coming directly from bhack.dddd), rebuild full material.
-	if is_rhythm_tree(t) then
+	if t.type == "tree" or is_rhythm_tree(t) then
+		local material = rhythm_material(self, t, self.CHORDS)
+		if t.type == "tree" then
+			material.clef = self.clef_override or t.clef or material.clef
+			material.bpm = t.bpm or material.bpm
+			material.slurs = t.slurs or material.slurs
+			material.hairpins = t.hairpins or material.hairpins
+			material.source_musicxml = t.source_musicxml
+		end
+		self.Score:set_material(material)
 		self.rhythm_tree_spec = t
-		self.Score:set_material({
-			clef = self.current_clef_key,
-			render_tree = true,
-			tree = self.rhythm_tree_spec,
-			chords = self.CHORDS,
-			slurs = self.slurs,
-			hairpins = self.hairpins,
-			bpm = self.bpm,
-			draw = true,
-		})
-
 		self:load_playback_score()
 		return
 	end
@@ -598,6 +642,17 @@ function b_voice:in_1_dddd(atoms)
 	apply_voice_payload(self, dddd)
 end
 
+local function accept_tagged_data(self, atoms)
+	if atoms[1] ~= "dddd" or type(atoms[2]) ~= "string" then
+		self:error("[bhack.voice] expected dddd after the selector")
+		return
+	end
+	self:in_1_dddd({ atoms[2] })
+end
+
+b_voice["in_1_chord-seq"] = accept_tagged_data
+b_voice.in_1_tree = accept_tagged_data
+
 -- ─────────────────────────────────────
 function b_voice:in_1_list(atoms)
 	apply_voice_payload(self, bhack.dddd:new(self, atoms))
@@ -609,7 +664,6 @@ local function update_ranges(self, field, ranges)
 		self:error(err)
 		return
 	end
-	self[field] = updated
 	self:refresh_score_view()
 end
 
@@ -727,18 +781,28 @@ end
 
 -- ─────────────────────────────────────
 local function apply_chords_payload(self, dddd)
-	if dddd.depth == 1 then
+	local raw = dddd:get_table()
+	if type(raw) == "table" and raw.type == "chord-seq" then
+		apply_chord_sequence(self, raw)
+	elseif dddd.depth == 1 then
 		error("dddd must be of depth 2 for chords/arpeggios")
 	else
-		local raw = dddd:get_table()
 		-- Match voicebuilder behavior: raw is a depth-2 list of pitch strings.
-		-- Merge into existing chord specs so noteheads (if present) are preserved.
+		-- Stage new pitches with their noteheads until the next rhythm tree.
 		self.chords_raw = raw
-		local chords_size = type(raw) == "table" and #raw or 0
-		for i = 1, chords_size do
-			self.CHORDS[i] = self.CHORDS[i] or {}
-			self.CHORDS[i].notes = raw[i]
+		local pending = {}
+		for i, chord in ipairs(self.CHORDS) do
+			pending[i] = chord
 		end
+		for i, notes in ipairs(type(raw) == "table" and raw or {}) do
+			local chord = {}
+			for key, value in pairs(pending[i] or {}) do
+				chord[key] = value
+			end
+			chord.notes = notes
+			pending[i] = chord
+		end
+		self.CHORDS = pending
 	end
 end
 
@@ -898,6 +962,50 @@ function b_voice:in_1_export(atoms)
 end
 
 -- ─────────────────────────────────────
+local function chords_from_context(ctx)
+	local chords = {}
+	local previous
+	for _, chord in ipairs(ctx.chords or {}) do
+		if not chord.is_rest and not (previous and previous.is_tied) then
+			chords[#chords + 1] = chord
+		end
+		previous = chord
+	end
+	return chords
+end
+
+local function tree_from_context(ctx)
+	if ctx.tree then
+		return ctx.tree
+	end
+	local tree = {}
+	for i, measure in ipairs(ctx.measures or {}) do
+		tree[i] = {
+			measure.time_sig,
+			measure.tree,
+			figures = measure.figures,
+			duration_whole = measure.figures and measure.duration_whole,
+			barline = measure.barline,
+		}
+	end
+	return tree
+end
+
+function b_voice:in_1_getdata()
+	local score = self.Score
+	local ctx = score:get_ctx()
+	local material = score.voice and score.voice.material
+	output_parts(self, {
+		chords = material and material.chords or chords_from_context(ctx),
+		tree = material and material.tree or tree_from_context(ctx),
+		clef = score.clef_name_or_key,
+		bpm = ctx.bpm,
+		slurs = ctx.slurs,
+		hairpins = ctx.hairpins,
+		source_musicxml = material and material.source_musicxml or ctx.source_musicxml,
+	})
+end
+
 function b_voice:in_1_outsvg(_)
 	local dddd = bhack.dddd:new(self, self.svg)
 	dddd:output(1)

@@ -17,6 +17,21 @@ local function positive_number(value)
 	return number and number > 0 and number or nil
 end
 
+local function new_score_like(object, score_api)
+	local score = score_api.Score:new(object.width, object.height)
+	local previous = object.Score
+	if previous then
+		score.staff_size, score.staff_gap = previous.staff_size, previous.staff_gap
+		if previous.render_measure_count then
+			score:set_render_measure_count(previous.render_measure_count)
+		end
+		for key, value in pairs(previous.default_clef_layout or {}) do
+			score.default_clef_layout[key] = value
+		end
+	end
+	return score
+end
+
 local function initialize(object, score, args, default_width, default_height)
 	args = args or {}
 	local index = 1
@@ -135,4 +150,4 @@ local function install(class)
 	end
 end
 
-return { initialize = initialize, install = install }
+return { initialize = initialize, install = install, new_score_like = new_score_like }

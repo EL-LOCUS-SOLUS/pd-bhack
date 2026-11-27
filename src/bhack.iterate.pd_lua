@@ -17,13 +17,23 @@ function iterate:in_1_dddd(atoms)
 		self:bhack_error("dddd not found")
 		return
 	end
-	bhack.dddd:new_from_table(self, { "begin" }):output(1)
-	local t = dddd:get_table()
+	local entries = dddd:get_table()
+	if type(entries) ~= "table" then
+		self:error("[bhack.iterate] expected a list, chord, chord sequence or voice")
+		return
+	end
+	if entries[1] == nil then
+		entries = entries.chords or entries.notes or entries
+	end
+	if type(entries) ~= "table" then
+		self:error("[bhack.iterate] expected a list of chords or notes")
+		return
+	end
 
-	for _, v in ipairs(t) do
+	bhack.dddd:new_from_table(self, { "begin" }):output(1)
+	for _, v in ipairs(entries) do
 		local dddd_i = bhack.dddd:new_from_table(self, v)
 		dddd_i:output(2)
-
 	end
 
 	bhack.dddd:new_from_table(self, { "end" }):output(1)
