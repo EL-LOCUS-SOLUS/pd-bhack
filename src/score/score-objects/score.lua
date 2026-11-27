@@ -78,10 +78,55 @@ function Score:set_vertical_padding(padding)
 	self.default_clef_layout.padding_spaces = padding
 end
 
+local function normalize_ranges(ranges, name)
+	local hairpin = name == "hairpin"
+	local start_slot = hairpin and 2 or 1
+	if type(ranges) ~= "table" then
+		return nil, "Expected a list of " .. name .. " ranges"
+	end
+	local normalized = {}
+	for i, range in ipairs(ranges) do
+		if type(range) ~= "table" then
+			return nil, "Each " .. name .. " needs a start and an end position"
+		end
+		local start_index = tonumber(range.start_index or range[start_slot])
+		local end_index = tonumber(range.end_index or range[start_slot + 1])
+		local placement = range.placement or range[start_slot + 2]
+		if not hairpin then
+			start_index, end_index = math.tointeger(start_index), math.tointeger(end_index)
+		end
+		if not (start_index and end_index and start_index >= 1 and start_index < end_index and end_index < math.huge) then
+			return nil, ("Invalid %s range. Positions must start at 1 or higher and increase."):format(name)
+		end
+		if placement ~= nil and placement ~= "above" and placement ~= "below" then
+			return nil, "Expected above or below for " .. name .. " placement"
+		end
+		local span = { start_index = start_index, end_index = end_index, placement = placement }
+		if hairpin then
+			span.kind = M.HAIRPIN_TYPES[range.kind or range[1]]
+			if not span.kind then
+				return nil, "Expected cres or dim for the hairpin type"
+			end
+			if range.spread ~= nil then
+				span.spread = tonumber(range.spread)
+				if not (span.spread and span.spread > 0 and span.spread < math.huge) then
+					return nil, "Hairpin spread must be positive"
+				end
+			end
+		end
+		normalized[i] = span
+	end
+	return normalized
+end
+
 -- ─────────────────────────────────────
 function Score:set_ctx(ctx)
+	local slurs = assert(normalize_ranges(ctx.slurs or {}, "slur"))
+	local hairpins = assert(normalize_ranges(ctx.hairpins or {}, "hairpin"))
 	self.voice = nil
 	self.ctx = ctx
+	self.ctx.slurs = slurs
+	self.ctx.hairpins = hairpins
 	self.ctx.measure_meta = ctx.measure_meta or measure.build_measure_meta(ctx.measures or {})
 	self.ctx.render_measure_count = self.render_measure_count
 	refresh_chord_note_duration_ms(self.ctx)
@@ -92,8 +137,28 @@ function Score:get_ctx()
 	return self.ctx
 end
 
+local function set_ranges(self, ranges, name)
+	local normalized, err = normalize_ranges(ranges, name)
+	if not normalized then
+		return nil, err
+	end
+	self.ctx[name .. "s"] = normalized
+	self.chord_view = nil
+	return normalized
+end
+
+function Score:set_slurs(ranges)
+	return set_ranges(self, ranges, "slur")
+end
+
+function Score:set_hairpins(ranges)
+	return set_ranges(self, ranges, "hairpin")
+end
+
 -- ─────────────────────────────────────
 function Score:set_material(material)
+	local slurs = assert(normalize_ranges(material.slurs or {}, "slur"))
+	local hairpins = assert(normalize_ranges(material.hairpins or {}, "hairpin"))
 	self.render_tree = material.render_tree
 	self.render_stems = material.render_stems or self.render_tree
 	self.clef_name_or_key = material.clef
@@ -119,6 +184,8 @@ function Score:set_material(material)
 		steps_lookup = M.DIATONIC_STEPS,
 		measures = measures,
 		chords = chords,
+		slurs = slurs,
+		hairpins = hairpins,
 		tuplets = v.tuplets or {},
 		measure_meta = measure.build_measure_meta(measures),
 		bpm = self.bpm,
@@ -438,7 +505,7 @@ end
 
 -- ─────────────────────────────────────
 function Score:export_voice_musicxml(path)
-	return musicxml.export_voice(self.ctx.measures or {}, path)
+	return musicxml.export_voice(self.ctx.measures or {}, path, self.ctx.slurs, self.ctx.hairpins)
 end
 
 -- ─────────────────────────────────────
@@ -478,7 +545,7 @@ local function draw_svg(ctx, clefs, page)
 		table.insert(svg_chunks, clef_svg)
 	end
 
-	local ts_svg, notes_svg, ledger_svg, barline_svg, tuplet_svg, tie_svg, measure_number_svg, chords_rest_positions =
+	local ts_svg, notes_svg, ledger_svg, barline_svg, tuplet_svg, tie_svg, measure_number_svg, chords_rest_positions, slur_svg =
 		rendering.draw_sequence(ctx, ctx.chords, ctx.spacing_sequence, ctx.measure_meta, page)
 
 	ctx.chords_rest_positions = chords_rest_positions
@@ -506,6 +573,9 @@ local function draw_svg(ctx, clefs, page)
 	end
 	if tie_svg then
 		table.insert(svg_chunks, tie_svg)
+	end
+	if slur_svg then
+		table.insert(svg_chunks, slur_svg)
 	end
 
 	table.insert(svg_chunks, "</svg>")

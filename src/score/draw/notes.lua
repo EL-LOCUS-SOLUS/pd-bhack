@@ -4,6 +4,7 @@ local geometry = require("score/functions/geometry")
 local rhythm = require("score/functions/rhythm")
 local internal_utils = require("score/functions/pitch")
 local render_utils = require("score/draw/utils")
+local dynamics = require("score/draw/dynamics")
 local stems = require("score/draw/stems")
 local ties = require("score/draw/ties")
 local tuplets = require("score/draw/tuplets")
@@ -20,45 +21,6 @@ local function notehead_origin_options(glyph_name)
 		origin_x_spaces = tonumber(origin[1]) or 0,
 		origin_y_spaces = tonumber(origin[2]) or 0,
 	}
-end
-
-local function resolve_chord_dynamic_glyph(chord)
-	if not chord then
-		return nil
-	end
-	if chord.dynamic_glyph and type(chord.dynamic_glyph) == "string" and chord.dynamic_glyph ~= "" then
-		return chord.dynamic_glyph
-	end
-	local raw = chord.dynamic
-	if raw == nil then
-		return nil
-	end
-	if type(raw) == "table" then
-		raw = raw[1]
-	end
-	if raw == nil then
-		return nil
-	end
-	if type(raw) ~= "string" then
-		raw = tostring(raw)
-	end
-	local trimmed = raw:match("^%s*(.-)%s*$")
-	if not trimmed or trimmed == "" then
-		return nil
-	end
-	if trimmed:match("^dynamic") then
-		chord.dynamic = trimmed
-		chord.dynamic_glyph = trimmed
-		return trimmed
-	end
-
-	local token = trimmed:lower()
-	if constants.DYNAMIC_GLYPHS[token] then
-		chord.dynamic = token
-		chord.dynamic_glyph = constants.DYNAMIC_GLYPHS[token]
-		return chord.dynamic_glyph
-	end
-	return nil
 end
 
 local function update_bounds_with_glyph(state, anchor_x, glyph_metrics)
@@ -114,80 +76,6 @@ local function compute_chord_notehead_positions(state)
 	local chord_x = state.current_chord_x
 	local center_x = fallback_count > 0 and fallback_sum / fallback_count or chord_x
 	return left_edge or chord_x, center_x
-end
-
-local function render_chord_dynamic(state)
-	utils.log("render_chord_dynamic", 2)
-	local chord = state.current_chord
-	if not chord or chord.is_rest then
-		return state
-	end
-
-	local glyph_name = resolve_chord_dynamic_glyph(chord)
-	if not glyph_name then
-		state.previous_chord_dynamic_glyph = nil
-		return state
-	end
-	if state.previous_chord_dynamic_glyph and state.previous_chord_dynamic_glyph == glyph_name then
-		return state
-	end
-
-	local chord_x = state.notehead_center_x
-	local clef_key = (state.ctx.clef and state.ctx.clef.config and state.ctx.clef.config.key) or "g"
-	local direction = rhythm.ensure_chord_stem_direction(clef_key, chord)
-	local staff = state.ctx.staff or {}
-	local spacing = state.staff_spacing or staff.spacing or constants.DEFAULT_SPACING
-
-	local chord_min_y = state.chord_min_y or staff.center or 0
-	local chord_max_y = state.chord_max_y or staff.center or 0
-	local top_target = math.min((staff.top or chord_min_y) - (spacing * 1.5), chord_min_y - (spacing * 1.1))
-	local bottom_target = math.max((staff.bottom or chord_max_y) + (spacing * 1.8), chord_max_y + (spacing * 1.3))
-
-	local candidates
-	if direction == "down" then
-		candidates = {
-			{ y = top_target, preference = 0 },
-			{ y = bottom_target, preference = 1 },
-		}
-	else
-		candidates = {
-			{ y = bottom_target, preference = 0 },
-			{ y = top_target, preference = 1 },
-		}
-	end
-
-	local best_chunk, best_metrics, best_score
-	for _, candidate in ipairs(candidates) do
-		local chunk, metrics =
-			render_utils.glyph_group(state.ctx, glyph_name, chord_x, candidate.y, "center", "center", "#000000")
-		if metrics then
-			local gm_min_y = metrics.absolute_min_y or (candidate.y + (metrics.min_y or 0))
-			local gm_max_y = metrics.absolute_max_y or (candidate.y + (metrics.max_y or 0))
-			local overlap = math.max(0, math.min(gm_max_y, chord_max_y) - math.max(gm_min_y, chord_min_y))
-			local distance = 0
-			if gm_max_y < chord_min_y then
-				distance = chord_min_y - gm_max_y
-			elseif gm_min_y > chord_max_y then
-				distance = gm_min_y - chord_max_y
-			end
-			local score = (overlap * 1000) + candidate.preference - (distance * 0.05)
-			if (not best_score) or score < best_score then
-				best_score = score
-				best_chunk = chunk
-				best_metrics = metrics
-			end
-		end
-	end
-
-	if best_metrics then
-		if best_chunk then
-			table.insert(state.notes_svg, table.concat({ '  <g class="dynamics">', "    " .. best_chunk, "  </g>" }, "\n"))
-		end
-		state = update_bounds_with_glyph(state, chord_x, best_metrics)
-		state.previous_chord_dynamic_glyph = glyph_name
-	end
-
-	return state
 end
 
 local function assign_cluster_offsets(notes, threshold_steps, offset_px)
@@ -248,10 +136,15 @@ local function resolve_rest_glyph(rest)
 		return nil
 	end
 
-	local figure = rest.min_figure / rest.value
-	figure = utils.ceil_pow2(figure)
+	local figure = rest.notated and rest.figure or utils.ceil_pow2(rest.min_figure / rest.value)
 
-	if figure <= 1 then
+	if figure <= 0.125 then
+		return "restMaxima"
+	elseif figure <= 0.25 then
+		return "restLonga"
+	elseif figure <= 0.5 then
+		return "restDoubleWhole"
+	elseif figure <= 1 then
 		return "restWhole"
 	elseif figure <= 2 then
 		return "restHalf"
@@ -394,7 +287,7 @@ local function arrow_accidental_vertical_offset(meta, glyph_name, accidental_key
 	return glyph_center - base_center
 end
 
-local function render_accidents(ctx, chord, current_x, layout_right, placements)
+local function render_accidents(ctx, chord, current_x, layout_right, placements, skip_glyphs)
 	utils.log("render_accidents", 2)
 	local notes = chord.notes
 	if not notes or #notes == 0 or ctx.clef.config.glyph == "unpitchedPercussionClef1" then
@@ -472,7 +365,7 @@ local function render_accidents(ctx, chord, current_x, layout_right, placements)
 	local chord_accidentals = {}
 	for _, note in ipairs(notes) do
 		local accidental_key = note.accidental
-		local glyph_name = accidental_key and constants.ACCIDENTAL_GLYPHS[accidental_key]
+		local glyph_name = note.accidental_glyph or constants.ACCIDENTAL_GLYPHS[accidental_key]
 		if glyph_name and note.steps then
 			local placement = placements and placements[note]
 			local note_y = placement and placement.y or geometry.staff_y_for_steps(ctx, note.steps)
@@ -693,7 +586,7 @@ local function render_accidents(ctx, chord, current_x, layout_right, placements)
 	end
 
 	local group
-	if not ctx.measure_only then
+	if not ctx.measure_only and not skip_glyphs then
 		local fragments = {}
 		for _, col in ipairs(columns) do
 			for _, placed in ipairs(col.placed) do
@@ -727,6 +620,23 @@ local function render_accidents(ctx, chord, current_x, layout_right, placements)
 		}
 end
 
+local function render_notehead_parentheses(state, x, y, head)
+	local left_x = x + head.min_x
+	local left, left_metrics =
+		render_utils.glyph_group(state.ctx, "noteheadParenthesisLeft", left_x, y, "right", "center", "#000000")
+	local right_x = x + head.max_x
+	local right, right_metrics =
+		render_utils.glyph_group(state.ctx, "noteheadParenthesisRight", right_x, y, "left", "center", "#000000")
+	if left then
+		table.insert(state.notes_svg, "  " .. left)
+	end
+	if right then
+		table.insert(state.notes_svg, "  " .. right)
+	end
+	state = update_bounds_with_glyph(state, left_x, left_metrics)
+	return update_bounds_with_glyph(state, right_x, right_metrics)
+end
+
 local function render_noteheads(state)
 	utils.log("render_noteheads", 2)
 	local chord = state.current_chord
@@ -738,7 +648,7 @@ local function render_noteheads(state)
 		local placement = state.note_placements[note]
 		local note_y = placement.y
 		local percussion = state.ctx.clef.config.glyph == "unpitchedPercussionClef1"
-		local notehead = percussion and "noteheadBlack" or note.notehead
+		local notehead = percussion and not note.has_explicit_notehead and "noteheadBlack" or note.notehead
 		local notehead_options = notehead_origin_options(notehead)
 		local g, m = render_utils.glyph_group(
 			state.ctx,
@@ -750,6 +660,13 @@ local function render_noteheads(state)
 			"#000000",
 			notehead_options
 		)
+		if not m and chord.notated then
+			if notehead == "noteheadNull" then
+				m = render_utils.glyph_metrics(state.ctx, chord.notehead, note_y, "center", "center")
+			else
+				g, m = render_utils.glyph_group(state.ctx, chord.notehead, center_x, note_y, "center", "center", "#000000")
+			end
+		end
 		if m then
 			if g then
 				table.insert(state.notes_svg, "  " .. g)
@@ -760,6 +677,9 @@ local function render_noteheads(state)
 			note.right_extent = m.max_x
 			state.note_head_metrics[note] = m
 			state = update_bounds_with_glyph(state, center_x, m)
+			if note.notehead_parentheses and notehead ~= "noteheadNull" then
+				state = render_notehead_parentheses(state, center_x, note_y, m)
+			end
 
 			if chord_dot_level > 0 then
 				local notehead_width = m.width
@@ -835,17 +755,9 @@ local function render_articulations(state)
 			local blocking_edge = above and (state.chord_min_y or state.ctx.staff.top or 0)
 				or (state.chord_max_y or state.ctx.staff.bottom or 0)
 			local y = blocking_edge + (above and -gap or gap)
+			local align_y = above and "bottom" or "top"
 			local chunk, metrics =
-				render_utils.glyph_group(state.ctx, glyph_name, chord_x, y, "center", "center", "#000000")
-			if metrics then
-				if above and metrics.absolute_max_y and metrics.absolute_max_y > (blocking_edge - gap) then
-					y = y - (metrics.absolute_max_y - (blocking_edge - gap))
-					chunk, metrics = render_utils.glyph_group(state.ctx, glyph_name, chord_x, y, "center", "center", "#000000")
-				elseif (not above) and metrics.absolute_min_y and metrics.absolute_min_y < (blocking_edge + gap) then
-					y = y + ((blocking_edge + gap) - metrics.absolute_min_y)
-					chunk, metrics = render_utils.glyph_group(state.ctx, glyph_name, chord_x, y, "center", "center", "#000000")
-				end
-			end
+				render_utils.glyph_group(state.ctx, glyph_name, chord_x, y, "center", align_y, "#000000")
 			if chunk then
 				table.insert(state.notes_svg, table.concat({ '  <g class="articulations">', "    " .. chunk, "  </g>" }, "\n"))
 			end
@@ -911,6 +823,7 @@ local function render_ledgers(state)
 			if not state.ctx.measure_only then
 				for _, st in ipairs(ledgers) do
 					local y = geometry.staff_y_for_steps(state.ctx, st, placement.staff)
+					render_utils.record_line(state.ctx, left, y, right, y, state.ledger_cfg.thickness)
 					table.insert(
 						state.ledger_svg,
 						string.format(
@@ -1037,13 +950,15 @@ local function render_stems_and_flags(state)
 		state.chord_max_y = state.chord_max_y and math.max(state.chord_max_y, start_y, end_y)
 			or math.max(start_y, end_y)
 
+		local thickness = state.ctx.staff.line_thickness or 1
+		render_utils.record_line(state.ctx, stem_x, start_y, stem_x, end_y, thickness)
 		local line = string.format(
 			'  <line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#000000" stroke-width="%.3f"/>',
 			stem_x,
 			start_y,
 			stem_x,
 			end_y,
-			state.ctx.staff.line_thickness or 1
+			thickness
 		)
 		table.insert(state.notes_svg, line)
 	end
@@ -1122,7 +1037,7 @@ local function render_notes_and_chords(state)
 
 	local skip_accidentals = state.skip_accidentals
 	local accidental_chunk, adjusted_x, accidental_state =
-		render_accidents(state.ctx, chord, chord_x, state.layout_right, state.note_placements)
+		render_accidents(state.ctx, chord, chord_x, state.layout_right, state.note_placements, skip_accidentals)
 	if adjusted_x then
 		state.current_chord_x = adjusted_x
 		chord_x = adjusted_x
@@ -1147,6 +1062,8 @@ local function render_notes_and_chords(state)
 	state.notehead_left_x, state.notehead_center_x = compute_chord_notehead_positions(state)
 	state = render_ledgers(state)
 	state = update_chord_vertical_bounds(state)
+	state.notehead_min_y, state.notehead_max_y = state.chord_min_y, state.chord_max_y
+	dynamics.queue(state)
 
 	for _, note in ipairs(chord.notes) do
 		if note.steps then
@@ -1169,7 +1086,6 @@ local function render_notes_and_chords(state)
 
 	state = render_stems_and_flags(state)
 	state = render_articulations(state)
-	state = render_chord_dynamic(state)
 
 	if state.chord_rightmost then
 		state.layout_right = math.max(state.layout_right, state.chord_rightmost)
@@ -1260,6 +1176,9 @@ local function handle_common_bounds_and_layout(state)
 			right = right_edge,
 			center = (left_edge + right_edge) * 0.5,
 			playbar_x = state.notehead_left_x,
+			notehead_center_x = state.notehead_center_x,
+			notehead_min_y = state.notehead_min_y,
+			notehead_max_y = state.notehead_max_y,
 			min_y = state.chord_min_y,
 			max_y = state.chord_max_y,
 		}

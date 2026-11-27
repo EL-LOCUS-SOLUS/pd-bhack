@@ -137,7 +137,7 @@ local function assign_tuplet_directions(chords, tuplets, clef_key)
 		end
 		for idx = start_index, math.min(end_index, #chords) do
 			local chord = chords[idx]
-			if chord and chord.tuplet_id == tup.id then
+			if chord and chord.tuplet_id == tup.id and not chord.notated_stem_direction then
 				chord.forced_stem_direction = direction
 			end
 		end
@@ -161,7 +161,7 @@ local function assign_tuplet_directions(chords, tuplets, clef_key)
 			for idx = start_index, math.min(end_index, #chords) do
 				local chord = chords[idx]
 				if chord and not chord.is_rest then
-					local direction = rhythm.compute_chord_stem_direction(clef_key, chord)
+					local direction = chord.notated_stem_direction or rhythm.compute_chord_stem_direction(clef_key, chord)
 					if direction == "down" then
 						down_count = down_count + 1
 					else
@@ -216,9 +216,9 @@ function Voice:new(material)
 			local ts = m[1]
 			local tree = m[2]
 			current_time_sig = { ts[1], ts[2] }
-			table.insert(obj.measures, measure.Measure:new(current_time_sig, tree, i))
+			table.insert(obj.measures, measure.Measure:new(current_time_sig, tree, i, m))
 		else
-			table.insert(obj.measures, measure.Measure:new(current_time_sig, m[1], i))
+			table.insert(obj.measures, measure.Measure:new(current_time_sig, m[1], i, m))
 		end
 	end
 

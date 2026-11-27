@@ -75,6 +75,15 @@ local function add_tie_path(state, start_x, start_y, end_x, end_y, orientation)
 	local c1y = mid_y + arc_height
 	local c2y = mid_y + arc_height
 	local stroke = spacing * 0.2
+	if state.ctx.record_ink then
+		local half = stroke * 0.5
+		state.ctx.record_ink(
+			math.min(start_x, c1x, c2x, end_x) - half,
+			math.min(start_y, c1y, c2y, end_y) - half,
+			math.max(start_x, c1x, c2x, end_x) + half,
+			math.max(start_y, c1y, c2y, end_y) + half
+		)
+	end
 	local path = string.format(
 		'  <path d="M %.3f %.3f C %.3f %.3f %.3f %.3f %.3f %.3f" fill="none" stroke="#000000" stroke-width="%.3f" stroke-linecap="round"/>',
 		start_x,
@@ -120,7 +129,9 @@ local function register_tie_starts(state, chord)
 		return
 	end
 	for _, note in ipairs(chord.notes) do
-		register_tie_start_for_note(state, note)
+		if chord.is_tied or note.tie_start then
+			register_tie_start_for_note(state, note)
+		end
 	end
 end
 
@@ -130,7 +141,7 @@ local function draw_incoming_ties(state, chord)
 		return
 	end
 	for _, note in ipairs(chord.notes) do
-		local key = note_pitch_key(note)
+		local key = (not chord.notated or note.tie_stop) and note_pitch_key(note)
 		local queue = key and active[key]
 		if queue and #queue > 0 then
 			local entry = table.remove(queue, 1)
@@ -152,7 +163,7 @@ local function resolve_ties_for_chord(state)
 	end
 	state.active_ties = state.active_ties or {}
 	draw_incoming_ties(state, chord)
-	if chord.is_tied then
+	if chord.is_tied or chord.notated then
 		register_tie_starts(state, chord)
 	end
 	state.skip_accidentals = nil

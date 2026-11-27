@@ -8,6 +8,12 @@ local function should_render_stem(note)
 	if not note then
 		return false
 	end
+	if note.chord and note.chord.stemless then
+		return false
+	end
+	if note.chord and note.chord.notated then
+		return note.figure > 1
+	end
 	local head = note.notehead
 	if type(head) == "string" and head:match("Whole$") then
 		return false

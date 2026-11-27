@@ -125,8 +125,9 @@ local function glyph_metrics(ctx, glyph_name, anchor_y, align_x, align_y, option
 
 	local min_x_px = (sw_x_units + translate_x_units) * glyph_scale
 	local max_x_px = (ne_x_units + translate_x_units) * glyph_scale
-	local abs_y_sw = anchor_y - (glyph_scale * (sw_y_units + translate_y_units))
-	local abs_y_ne = anchor_y - (glyph_scale * (ne_y_units + translate_y_units))
+	local y_scale = options.flip_vertical and glyph_scale or -glyph_scale
+	local abs_y_sw = anchor_y + (y_scale * (sw_y_units + translate_y_units))
+	local abs_y_ne = anchor_y + (y_scale * (ne_y_units + translate_y_units))
 	local metrics = {
 		min_x = min_x_px,
 		max_x = max_x_px,
@@ -149,6 +150,16 @@ local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y
 		return nil, metrics
 	end
 
+	if ctx.record_ink then
+		ctx.record_ink(
+			anchor_x + metrics.min_x,
+			metrics.absolute_min_y,
+			anchor_x + metrics.max_x,
+			metrics.absolute_max_y,
+			glyph_name
+		)
+	end
+
 	if not ctx.clip_to_viewport and ctx.width and ctx.height then
 		local min_x = anchor_x + metrics.min_x
 		local max_x = anchor_x + metrics.max_x
@@ -164,7 +175,7 @@ local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y
 		anchor_x,
 		anchor_y,
 		scale,
-		-scale,
+		options and options.flip_vertical and scale or -scale,
 		metrics.translate_x_units,
 		metrics.translate_y_units,
 		glyph.d,
@@ -173,10 +184,23 @@ local function glyph_group(ctx, glyph_name, anchor_x, anchor_y, align_x, align_y
 	return path, metrics
 end
 
+local function record_line(ctx, x1, y1, x2, y2, thickness)
+	if ctx.record_ink then
+		local half = thickness * 0.5
+		ctx.record_ink(
+			math.min(x1, x2) - half,
+			math.min(y1, y2) - half,
+			math.max(x1, x2) + half,
+			math.max(y1, y2) + half
+		)
+	end
+end
+
 return {
 	getGlyph = getGlyph,
 	record_canvas_violation = record_canvas_violation,
 	glyph_width_px = glyph_width_px,
 	glyph_metrics = glyph_metrics,
 	glyph_group = glyph_group,
+	record_line = record_line,
 }

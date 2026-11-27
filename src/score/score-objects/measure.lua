@@ -109,8 +109,21 @@ local function normalize_single_measure_span_tree(time_sig, tree)
 end
 
 -- ─────────────────────────────────────
-function Measure:new(time_sig, tree, number)
+function Measure:new(time_sig, tree, number, notation)
 	rhythm.validate_rhythm_tree(tree)
+
+	if notation and notation.duration_whole then
+		local obj = setmetatable({
+			time_sig = time_sig,
+			tree = tree,
+			measure_number = number,
+			duration_whole = notation.duration_whole,
+			figures = notation.figures,
+			barline = notation.barline,
+		}, self)
+		obj:build()
+		return obj
+	end
 
 	local has_decimal
 	local tree, has_decimal = rhythm.normalize_decimal_level(tree)
@@ -248,11 +261,12 @@ function Measure:append_value_entry(
 	total,
 	container_duration,
 	min_figure,
-	is_tied
+	is_tied,
+	notation
 )
 	local value = math.abs(raw_value or 0)
 
-	if value > 0 and value == math.floor(value) then
+	if not notation and value > 0 and value == math.floor(value) then
 		local remaining = value
 		local parts = {}
 
@@ -313,8 +327,15 @@ function Measure:append_value_entry(
 	-- local notehead, dot_level = rhythm.figure_to_notehead(value, min_figure)
 
 	local raw_figure = (duration_whole ~= 0) and (1 / duration_whole) or 0
-	local dot_level, figure = rhythm.compute_figure(value, min_figure)
-	local notehead = rhythm.figure_to_notehead(value, min_figure)
+	local dot_level, figure, notehead
+	if notation then
+		figure, dot_level = notation.figure, notation.dots
+		min_figure = value * figure
+		notehead = rhythm.figure_to_notehead(1, figure)
+	else
+		dot_level, figure = rhythm.compute_figure(value, min_figure)
+		notehead = rhythm.figure_to_notehead(value, min_figure)
+	end
 
 	local entry_meta = {
 		time_sig = self.time_sig,
@@ -333,6 +354,7 @@ function Measure:append_value_entry(
 		spacing_multiplier = rhythm.figure_spacing_multiplier(duration_whole),
 		is_tied = is_tied,
 		tree = self.tree,
+		notated = notation and true,
 	}
 
 	local element
@@ -519,6 +541,42 @@ function Measure:expand_level(rhythms, container_duration, parent_tuplet, measur
 end
 
 -- ─────────────────────────────────────
+function Measure:expand_notated_level(rhythms, duration, parent)
+	local total = rhythm.rhythm_sum(rhythms)
+	for _, entry in ipairs(rhythms) do
+		if rhythm.is_tuplet_entry(entry) then
+			local depth = parent and parent.depth + 1 or 1
+			local tuplet = rhythm.Tuplet:new(entry[1], entry[2], {
+				parent = parent,
+				parent_sum = total,
+				container_duration = duration,
+				depth = depth,
+				notation = entry,
+			})
+			tuplet.start_index = #self.entries + 1
+			self.tuplets[#self.tuplets + 1] = tuplet
+			self.max_tuplet_depth = math.max(self.max_tuplet_depth, depth)
+			if parent then
+				parent.children[#parent.children + 1] = tuplet
+			end
+			self:expand_notated_level(entry[2], tuplet.duration, tuplet)
+			tuplet.end_index = #self.entries
+		else
+			local figure = assert(self.figures[#self.entries + 1], "Missing notated rhythm figure")
+			self:append_value_entry(
+				rhythm.rhythm_value(entry),
+				nil,
+				parent,
+				total,
+				duration,
+				nil,
+				type(entry) == "string",
+				figure
+			)
+		end
+	end
+end
+
 function Measure:build()
 	local t_amount = self.time_sig[1]
 	local t_fig = self.time_sig[2]
@@ -538,8 +596,11 @@ function Measure:build()
 	self.entries = {}
 	self.tuplets = {}
 	self.max_tuplet_depth = 0
-	-- Go recursive to get nested tuplets
-	self:expand_level(self.tree or {}, measure_whole, nil, self.min_figure, self.min_figure)
+	if self.duration_whole then
+		self:expand_notated_level(self.tree, self.duration_whole)
+	else
+		self:expand_level(self.tree or {}, measure_whole, nil, self.min_figure, self.min_figure)
+	end
 end
 
 -- ─────────────────────────────────────
@@ -630,7 +691,7 @@ local function build_measure_meta(voice_measures)
 			end_index = end_index,
 			time_signature = { numerator = ts[1], denominator = ts[2] },
 			signature_key = sig_key,
-			barline = "barlineSingle",
+			barline = m.barline or "barlineSingle",
 			show_time_signature = (i == 1) or (sig_key ~= last_sig_key),
 			time_signature_rendered = false,
 			measure = m,

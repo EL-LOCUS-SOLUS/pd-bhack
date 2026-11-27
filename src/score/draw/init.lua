@@ -1,6 +1,10 @@
 local utils = require("score/functions/utils")
 local time = require("score/draw/time")
 local notes = require("score/draw/notes")
+local dynamics = require("score/draw/dynamics")
+local hairpins = require("score/draw/hairpins")
+local slurs = require("score/draw/slurs")
+local ink = require("score/draw/ink")
 local barlines = require("score/draw/barlines")
 local tuplets = require("score/draw/tuplets")
 local render_utils = require("score/draw/utils")
@@ -416,6 +420,23 @@ end
 
 local function finalize_svg_groups(state)
 	utils.log("finalize_svg_groups", 2)
+	local enclosed_hairpins = state.hairpin_slurs and next(state.hairpin_slurs) ~= nil
+	local slur_group
+	if not enclosed_hairpins then
+		slur_group = slurs.render(state)
+	end
+	dynamics.render(state)
+	local hairpin_paths = {}
+	if enclosed_hairpins then
+		hairpins.render(state, true, hairpin_paths)
+		slur_group = slurs.render(state)
+	end
+	-- A wedge across several phrases clears their slurs as a single mark.
+	hairpins.render(state, false, hairpin_paths)
+	if #hairpin_paths > 0 then
+		state.notes_svg[#state.notes_svg + 1] =
+			'  <g id="hairpins">\n' .. table.concat(hairpin_paths, "\n") .. "\n  </g>"
+	end
 	local time_sig_group = nil
 	if #state.time_sig_chunks > 0 then
 		time_sig_group =
@@ -451,7 +472,8 @@ local function finalize_svg_groups(state)
 		tuplet_group,
 		tie_group,
 		measure_number_group,
-		state.chords_rest_positions
+		state.chords_rest_positions,
+		slur_group
 end
 
 local function place_chord(state, chord, index, x)
@@ -535,6 +557,27 @@ local function extend_chord_pages(ctx, layout, target_index)
 	finish_chord_page(ctx, layout, page, staff_right, last_right)
 end
 
+local function prepare_expression_layout(state, first, last, width)
+	local visible_slurs = slurs.visible_ranges(state.chords, state.ctx.slurs, first, last)
+	if #visible_slurs > 0 then
+		state.visible_slurs = visible_slurs
+	end
+	local visible_hairpins = hairpins.visible_ranges(state.ctx.hairpins, #state.chords, first, last)
+	if #visible_hairpins > 0 then
+		state.visible_hairpins = visible_hairpins
+		state.hairpin_slurs = hairpins.enclosing_slurs(visible_hairpins, visible_slurs)
+		state.hairpin_placements = {}
+		state.dynamic_boxes = {}
+	end
+	if dynamics.has_marks(state.chords, first, last) then
+		state.dynamics = {}
+	end
+	if state.visible_slurs or state.visible_hairpins or state.dynamics then
+		state.viewport_width = width
+		ink.attach(state)
+	end
+end
+
 -- ─────────────────────────────────────
 local function draw_sequence(ctx, chords, spacing_sequence, measure_meta, chord_page)
 	utils.log("draw_sequence", 2)
@@ -542,6 +585,8 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta, chord_
 	measure_meta = measure_meta or {}
 	local state = create_initial_state(ctx, chords, spacing_sequence, measure_meta)
 	if chord_page then
+		state.first_visible_entry_index = chord_page.first
+		prepare_expression_layout(state, chord_page.first, chord_page.first + #chord_page.anchors - 1, chord_page.width)
 		for i, anchor in ipairs(chord_page.anchors) do
 			local index = chord_page.first + i - 1
 			local bounds = place_chord(state, chords[index], index, anchor)
@@ -599,6 +644,7 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta, chord_
 		end
 	end
 
+	prepare_expression_layout(state, start_entry_index, end_entry_index, ctx.width)
 	for entry_index = start_entry_index, end_entry_index do
 		state.current_position_index = entry_index
 		state = apply_measure_start(state)
@@ -620,8 +666,8 @@ local function draw_sequence(ctx, chords, spacing_sequence, measure_meta, chord_
 		end
 
 		if chord and chord.notes and #chord.notes > 0 then
-			state.ctx.last_chord = chord_to_blueprint(chord)
-			state.ctx.last_chord_instance = chord
+			ctx.last_chord = chord_to_blueprint(chord)
+			ctx.last_chord_instance = chord
 		end
 	end
 

@@ -97,7 +97,7 @@ local function ensure_chord_stem_direction(clef_key, chord)
 		return stem_direction(clef_key, nil) or "up"
 	end
 	local parent_tuplet = chord.parent_tuplet
-	if parent_tuplet and parent_tuplet.forced_direction then
+	if parent_tuplet and parent_tuplet.forced_direction and not chord.notated_stem_direction then
 		if chord.forced_stem_direction ~= parent_tuplet.forced_direction then
 			chord.forced_stem_direction = parent_tuplet.forced_direction
 		end
@@ -621,6 +621,31 @@ function Tuplet:new(up_value, rhythms, parent_context)
 	obj.beam_highest_pos = nil
 	obj.beam_lowest_pos = nil
 
+	local parent_sum = parent_context.parent_sum
+	if parent_sum <= 0 then
+		parent_sum = (obj.up_value > 0) and obj.up_value or 1
+	end
+	local container_duration = parent_context.container_duration or parent_context.duration or 0
+	obj.duration = container_duration * (obj.up_value / parent_sum)
+	obj.tuplet_sum = rhythm_sum(obj.rhythms)
+	if obj.tuplet_sum <= 0 then
+		obj.tuplet_sum = 1
+	end
+	obj.child_unit = obj.duration / obj.tuplet_sum
+	obj.start_index = 0
+	obj.end_index = 0
+	obj.id = tuplet_serial
+
+	local notation = parent_context.notation
+	if notation then
+		obj.is_beam_group_only = notation.beam_only or false
+		obj.require_draw = notation.bracket == true or (notation.label ~= nil and notation.show_number ~= "none")
+		obj.label_string = notation.label
+		obj.show_number = notation.show_number
+		obj.bracket = notation.bracket
+		return obj
+	end
+
 	local is_compound_eighth_meter = false
 	if parent_context and parent_context.measure and parent_context.measure.is_compound_eighth_beam_grouping then
 		is_compound_eighth_meter = parent_context.measure:is_compound_eighth_beam_grouping()
@@ -639,15 +664,6 @@ function Tuplet:new(up_value, rhythms, parent_context)
 			obj.require_draw = false
 		end
 	end
-
-	local parent_sum = parent_context.parent_sum
-	if parent_sum <= 0 then
-		parent_sum = (obj.up_value > 0) and obj.up_value or 1
-	end
-
-	local container_duration = parent_context and (parent_context.container_duration or parent_context.duration) or 0
-	obj.duration = container_duration * (obj.up_value / parent_sum)
-	obj.tuplet_sum = rhythm_sum(obj.rhythms)
 
 	local label_reference = obj.up_value
 	if utils.is_power_of_two(obj.up_value) then
@@ -712,10 +728,6 @@ function Tuplet:new(up_value, rhythms, parent_context)
 		end
 	end
 
-	if obj.tuplet_sum <= 0 then
-		obj.tuplet_sum = 1
-	end
-	obj.child_unit = (obj.duration ~= 0) and (obj.duration / obj.tuplet_sum) or 0
 	if obj.is_beam_group_only then
 		obj.label_string = nil
 	else
@@ -743,9 +755,6 @@ function Tuplet:new(up_value, rhythms, parent_context)
 			)
 	end
 
-	obj.start_index = 0
-	obj.end_index = 0
-	obj.id = tuplet_serial
 	return obj
 end
 

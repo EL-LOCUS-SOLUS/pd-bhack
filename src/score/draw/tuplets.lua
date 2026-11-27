@@ -23,13 +23,15 @@ local function extend_stem_for_tuplet(state, note, stem_metrics, direction, old_
 
 	local anchor_x = stem_metrics.anchor_x or note.stem_anchor_x or note.render_x or 0
 
+	local thickness = state.ctx.staff.line_thickness * 0.5
+	render_utils.record_line(state.ctx, anchor_x, old_y, anchor_x, new_y, thickness)
 	local line = string.format(
 		'  <line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#000000" stroke-width="%.3f"/>',
 		anchor_x,
 		old_y,
 		anchor_x,
 		new_y,
-		state.ctx.staff.line_thickness * 0.5
+		thickness
 	)
 	state.notes_svg[#state.notes_svg + 1] = line
 
@@ -199,7 +201,7 @@ local function get_beam_glyph_metrics(ctx)
 	if ctx.cached_beam_metrics then
 		return ctx.cached_beam_metrics
 	end
-	local _, metrics = render_utils.glyph_group(ctx, constants.TUPLET_BEAM_GLYPH, 0, 0, "left", "top", "#000000")
+	local metrics = render_utils.glyph_metrics(ctx, constants.TUPLET_BEAM_GLYPH, 0, "left", "top")
 	if not metrics then
 		metrics = {
 			width = (ctx.staff and ctx.staff.spacing) or 0.8,
@@ -665,20 +667,10 @@ local function draw_tuplet_glyph(state, glyph_name, x, y, align_y, flip_vertical
 		return state
 	end
 
-	local chunk = render_utils.glyph_group(state.ctx, glyph_name, x, y, "center", align_y or "center", "#000000")
+	local chunk = render_utils.glyph_group(
+		state.ctx, glyph_name, x, y, "center", align_y or "center", "#000000", { flip_vertical = flip_vertical }
+	)
 	if chunk then
-		if flip_vertical then
-			local cx = x
-			local cy = y
-			chunk = string.format(
-				'<g transform="translate(%.3f %.3f) scale(1 -1) translate(-%.3f -%.3f)">%s</g>',
-				cx,
-				cy,
-				cx,
-				cy,
-				chunk
-			)
-		end
 		state.tuplet_svg[#state.tuplet_svg + 1] = "  " .. chunk
 	end
 
@@ -812,10 +804,18 @@ render_tuplet_draw_request = function(state, request)
 		local left_nudge = staff_spacing * 0.25
 		start_x = start_x - left_nudge
 	end
-	state = draw_tuplet_glyph(state, "textTupletBracketStartLongStem", start_x, y, bracket_align_y, flip)
-	state = draw_tuplet_glyph(state, "textTupletBracketEndLongStem", end_x, y, bracket_align_y, flip)
+	if tuplet.bracket ~= false then
+		state = draw_tuplet_glyph(state, "textTupletBracketStartLongStem", start_x, y, bracket_align_y, flip)
+		state = draw_tuplet_glyph(state, "textTupletBracketEndLongStem", end_x, y, bracket_align_y, flip)
+	end
 
-	state = render_tuplet_label_at(state, request.label, start_x, end_x, y)
+	if tuplet.show_number ~= "none" then
+		local label = request.label
+		if label and tuplet.show_number == "actual" then
+			label = label:match("^%d+")
+		end
+		state = render_tuplet_label_at(state, label, start_x, end_x, y)
+	end
 
 	if geometry then
 		state.tuplet_beam_geometry[tuplet] = nil

@@ -3,6 +3,9 @@ local render_utils = require("score/draw/utils")
 
 local function draw_barline(ctx, x, glyph_name, staff)
 	utils.log("draw_barline", 2)
+	if glyph_name == "none" then
+		return
+	end
 	staff = staff or ctx.staff
 	local group, metrics = render_utils.glyph_group(
 		ctx,

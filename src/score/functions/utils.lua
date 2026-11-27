@@ -76,12 +76,9 @@ local function accidental_value(acc)
 	end
 
 	local value = 0
-	if acc:find("#") then
-		value = value + 1
-	end
-	if acc:find("b") then
-		value = value - 1
-	end
+	local sharps = select(2, acc:gsub("#", ""))
+	local flats = select(2, acc:gsub("b", ""))
+	value = value + sharps - flats
 
 	local count_up = select(2, acc:gsub("%^", ""))
 	if count_up > 0 then

@@ -65,18 +65,17 @@ local function resolve_notehead_glyph(name_or_glyph, figure_suffix)
 	if s == "" then
 		return "notehead" .. tostring(figure_suffix or "Black")
 	end
-	local plain_duration = s:match("^notehead(Black|Half|Whole)$")
-	if plain_duration then
-		return "notehead" .. tostring(figure_suffix or plain_duration)
-	end
 	local lower = s:lower()
 	if lower == "black" or lower == "half" or lower == "whole" then
 		return "notehead" .. tostring(figure_suffix or "Black")
 	end
-	if s:match("^notehead") then
-		if s == "notehead" then
-			return "notehead" .. tostring(figure_suffix or "Black")
-		end
+	if s == "notehead" then
+		return "notehead" .. tostring(figure_suffix or "Black")
+	end
+	if s:match("^notehead") or s:match("^noteShape") or s:match("^mensuralNotehead") then
+		return s
+	end
+	if constants.Bravura_Glyphnames and constants.Bravura_Glyphnames[s] then
 		return s
 	end
 	return "notehead" .. s .. tostring(figure_suffix or "Black")
@@ -153,6 +152,9 @@ local function resolve_articulation_glyph(raw)
 		return nil
 	end
 	if type(raw) == "table" then
+		if type(raw.smufl) == "string" then
+			return raw.smufl
+		end
 		raw = raw[1]
 	end
 	if raw == nil then
@@ -327,6 +329,7 @@ function Chord:new(name, notes, entry_info)
 		obj.index = entry_info.index
 		obj.measure_index = entry_info.measure_index
 		obj.dot_level = entry_info.dot_level or 0
+		obj.notated = entry_info.notated
 		obj.min_figure = entry_info.min_figure
 		obj.value = entry_info.value
 		obj.notehead = entry_info.notehead
@@ -362,6 +365,8 @@ function Chord:populate_notes(notes_or_spec)
 		self.stem = normalize_stem_glyph(notes_or_spec.stem) or self.stem
 		self.forced_stem_direction =
 			normalize_forced_stem_direction(notes_or_spec.forced_stem_direction or notes_or_spec.stem_direction)
+		self.notated_stem_direction = self.notated and self.forced_stem_direction or nil
+		self.stemless = notes_or_spec.stemless
 	end
 	local has_articulations = articulations ~= nil
 	self.articulations = resolve_articulation_glyphs(articulations)
@@ -414,9 +419,14 @@ function Chord:populate_notes(notes_or_spec)
 			value = self.value,
 			min_figure = self.min_figure,
 			is_tied = self.is_tied or false,
+			tie_start = note_spec.tie_start,
+			tie_stop = note_spec.tie_stop,
+			accidental_glyph = note_spec.accidental_glyph,
+			midi = note_spec.midi,
 			stem = self.stem,
 			dynamic = self.dynamic,
 			notehead = resolved,
+			notehead_parentheses = note_spec.notehead_parentheses,
 			has_explicit_notehead = has_effective_explicit_notehead(name_or_glyph),
 			chord = self,
 		})
@@ -451,6 +461,7 @@ function Rest:new(entry_info)
 		obj.min_figure = entry_info.min_figure
 		obj.spacing_multiplier = entry_info.spacing_multiplier
 		obj.dot_level = entry_info.dot_level or 0
+		obj.notated = entry_info.notated
 		obj.is_tied = entry_info.is_tied
 	end
 

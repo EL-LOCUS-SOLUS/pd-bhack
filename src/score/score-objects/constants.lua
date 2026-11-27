@@ -135,6 +135,8 @@ M.CLEF_CONFIG_BY_GLYPH = {
 M.ACCIDENTAL_GLYPHS = {
 	["#"] = "accidentalSharp",
 	["b"] = "accidentalFlat",
+	["##"] = "accidentalDoubleSharp",
+	["bb"] = "accidentalDoubleFlat",
 	["+"] = "accidentalQuarterToneSharpStein",
 	["-"] = "accidentalNarrowReversedFlat",
 	["b-"] = "accidentalNarrowReversedFlatAndFlat",
@@ -204,6 +206,15 @@ M.DYNAMIC_GLYPHS = {
 	["ff"] = "dynamicFF",
 	["fff"] = "dynamicFFF",
 	["ffff"] = "dynamicFFFF",
+}
+
+M.HAIRPIN_TYPES = {
+	cres = "crescendo",
+	cresc = "crescendo",
+	crescendo = "crescendo",
+	dim = "diminuendo",
+	diminuendo = "diminuendo",
+	diminuent = "diminuendo",
 }
 
 M.ARTICULATION_GLYPHS = {
